@@ -1,0 +1,10 @@
+⚡ QUICK START - 5 MIN
+
+1. Estrai ZIP
+2. python deploy.sh
+3. Attendi 3-5 min
+4. Aggiungi API keys
+5. npm run dev & npm start
+6. http://localhost:3000
+
+✅ Done!
