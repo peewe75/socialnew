@@ -90,34 +90,22 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
-  console.log('\n🛑 Shutting down gracefully...');
+  console.log('\n Shutting down gracefully...');
   await disconnectPrisma();
   process.exit(0);
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`
-╔════════════════════════════════════════════════════════════╗
-║   🚀 NEWS TO SOCIAL AUTOMATION BACKEND                     ║
-║                                                            ║
-║   Server running on: http://localhost:${PORT}                 ║
-║   Environment: ${(process.env.NODE_ENV || 'development').padEnd(7)}                     ║
-║   Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}                    ║
-║   API Base: http://localhost:${PORT}/api                      ║
-║                                                            ║
-║   Endpoints:                                               ║
-║   - POST /api/news/collect       → Collect news            ║
-║   - POST /api/news/generate      → Generate posts          ║
-║   - GET  /api/publish/accounts   → Blotato accounts        ║
-║   - POST /api/publish/approve    → Publish to Blotato      ║
-║   - POST /api/approval/submit    → Submit approval         ║
-║   - POST /api/media/generate-image    → Generate images    ║
-║   - POST /api/avatar/generate    → Generate videos         ║
-║   - GET  /api/analytics/dashboard    → Analytics           ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
-  `);
-});
+// Start server only in non-serverless environments (local dev)
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`
+  NEWS TO SOCIAL AUTOMATION BACKEND
+  Server running on: http://localhost:${PORT}
+  Environment: ${process.env.NODE_ENV || 'development'}
+  Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}
+  API Base: http://localhost:${PORT}/api
+    `);
+  });
+}
 
 export default app;
