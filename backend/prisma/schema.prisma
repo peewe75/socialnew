@@ -1,0 +1,303 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// NEWS COLLECTION
+// ============================================================================
+
+model NewsItem {
+  id              String   @id @default(cuid())
+  title           String   @db.VarChar(500)
+  summary         String   @db.Text
+  source          String   @db.VarChar(200)
+  link            String   @db.VarChar(2000)
+  publishedAt     DateTime
+  collectedAt     DateTime @default(now())
+  
+  // Relations
+  posts           Post[]
+  approvalQueues  ApprovalQueue[]
+  
+  @@index([collectedAt])
+  @@index([source])
+  @@map("news_items")
+}
+
+// ============================================================================
+// GENERATED CONTENT
+// ============================================================================
+
+model Post {
+  id              String   @id @default(cuid())
+  newsItemId      String
+  newsItem        NewsItem @relation(fields: [newsItemId], references: [id], onDelete: Cascade)
+  
+  // Content per piattaforma
+  linkedinContent     String?  @db.Text
+  facebookContent     String?  @db.Text
+  instagramContent    String?  @db.Text
+  tiktokContent       String?  @db.Text
+  blogContent         String?  @db.Text
+  
+  // Hashtags (stored as JSON array)
+  linkedinHashtags    String[] @default([])
+  facebookHashtags    String[] @default([])
+  instagramHashtags   String[] @default([])
+  tiktokHashtags      String[] @default([])
+  
+  // Media URLs
+  linkedinMediaUrls   String[] @default([])
+  facebookMediaUrls   String[] @default([])
+  instagramMediaUrls  String[] @default([])
+  tiktokMediaUrls     String[] @default([])
+  blogImageUrl        String?  @db.VarChar(2000)
+  
+  // Status workflow
+  status              PostStatus @default(GENERATED)
+  
+  // Approval
+  approvedAt          DateTime?
+  approvedBy          String?   @db.VarChar(100)
+  rejectionReason     String?   @db.Text
+  editedContent       Json?     // Tracks what user edited
+  
+  // Scheduling
+  scheduledFor        DateTime?
+  publishedAt         DateTime?
+  
+  // Relations
+  blotatoTracking     BlotatoTracking[]
+  analytics           Analytics[]
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@index([status])
+  @@index([newsItemId])
+  @@index([publishedAt])
+  @@index([scheduledFor])
+  @@map("posts")
+}
+
+enum PostStatus {
+  GENERATED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+// ============================================================================
+// BLOTATO TRACKING
+// ============================================================================
+
+model BlotatoTracking {
+  id              String   @id @default(cuid())
+  postId          String
+  post            Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  platform        String   @db.VarChar(50)  // 'linkedin', 'facebook', 'instagram', 'tiktok'
+  blotatoPostId   String   @db.VarChar(200)
+  status          String   @db.VarChar(50)  // 'pending', 'published', 'failed'
+  
+  // Metrics snapshot at time of tracking
+  views           Int      @default(0)
+  likes           Int      @default(0)
+  comments        Int      @default(0)
+  shares          Int      @default(0)
+  clicks          Int      @default(0)
+  reach           Int      @default(0)
+  impressions     Int      @default(0)
+  engagement      Float    @default(0.0)
+  
+  publishedAt     DateTime?
+  lastUpdated     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  
+  @@unique([postId, platform])
+  @@index([platform])
+  @@index([blotatoPostId])
+  @@index([publishedAt])
+  @@map("blotato_tracking")
+}
+
+// ============================================================================
+// ANALYTICS
+// ============================================================================
+
+model Analytics {
+  id              String   @id @default(cuid())
+  postId          String
+  post            Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  platform        String   @db.VarChar(50)
+  views           Int      @default(0)
+  likes           Int      @default(0)
+  comments        Int      @default(0)
+  shares          Int      @default(0)
+  clicks          Int?
+  reach           Int?
+  impressions     Int?
+  engagement      Float    @default(0.0)
+  
+  recordedAt      DateTime @default(now())
+  
+  @@index([postId])
+  @@index([platform])
+  @@index([recordedAt])
+  @@map("analytics")
+}
+
+// ============================================================================
+// APPROVAL QUEUE
+// ============================================================================
+
+model ApprovalQueue {
+  id              String   @id @default(cuid())
+  newsItemId      String
+  newsItem        NewsItem @relation(fields: [newsItemId], references: [id], onDelete: Cascade)
+  
+  // Webhook info
+  webhookPayload  Json
+  webhookSentAt   DateTime
+  webhookStatus   String   @db.VarChar(50)  // 'pending', 'received', 'failed'
+  webhookRetries  Int      @default(0)
+  
+  // Approval response
+  approvalResponse Json?
+  approvedAt      DateTime?
+  approvalDelay   Int?     // milliseconds from sent to approval
+  
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime // Auto-cleanup after 7 days
+  
+  @@index([webhookStatus])
+  @@index([expiresAt])
+  @@map("approval_queue")
+}
+
+// ============================================================================
+// BLOTATO ACCOUNTS
+// ============================================================================
+
+model BlotatoAccount {
+  id              String   @id @default(cuid())
+  
+  accountType     String   @db.VarChar(50)  // 'linkedin', 'facebook', 'instagram', 'tiktok'
+  blotatoAccountId String  @unique @db.VarChar(200)
+  blotatoPageId   String?  @db.VarChar(200) // For Facebook/Instagram
+  
+  displayName     String?  @db.VarChar(200)
+  profileUrl      String?  @db.VarChar(2000)
+  
+  isActive        Boolean  @default(true)
+  syncedAt        DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([accountType])
+  @@map("blotato_accounts")
+}
+
+// ============================================================================
+// VIDEO GENERATION TRACKING
+// ============================================================================
+
+model VideoGeneration {
+  id              String   @id @default(cuid())
+  postId          String?  // Optional relation to post
+  
+  videoId         String   @unique @db.VarChar(200)
+  avatarId        String   @db.VarChar(100)
+  voiceId         String   @db.VarChar(100)
+  
+  status          String   @db.VarChar(50)  // 'pending', 'processing', 'completed', 'failed'
+  progress        Int      @default(0)
+  
+  script          String   @db.Text
+  videoUrl        String?  @db.VarChar(2000)
+  localUrl        String?  @db.VarChar(2000)
+  
+  generatedAt     DateTime?
+  downloadedAt    DateTime?
+  createdAt       DateTime @default(now())
+  
+  @@index([status])
+  @@index([generatedAt])
+  @@map("video_generation")
+}
+
+// ============================================================================
+// MEDIA STORAGE
+// ============================================================================
+
+model MediaFile {
+  id              String   @id @default(cuid())
+  
+  filename        String   @db.VarChar(500)
+  fileType        String   @db.VarChar(20)  // 'image', 'video'
+  fileSize        Int
+  
+  localUrl        String   @unique @db.VarChar(2000)
+  cloudinaryUrl   String?  @db.VarChar(2000)
+  s3Url           String?  @db.VarChar(2000)
+  
+  platform        String?  @db.VarChar(50)  // which platform this was generated for
+  newsItemId      String?
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([fileType])
+  @@index([platform])
+  @@map("media_files")
+}
+
+// ============================================================================
+// SYSTEM CONFIG
+// ============================================================================
+
+model SystemConfig {
+  id              String   @id @default(cuid())
+  
+  key             String   @unique @db.VarChar(100)
+  value           Json
+  description     String?  @db.Text
+  
+  lastUpdated     DateTime @updatedAt
+  
+  @@map("system_config")
+}
+
+// ============================================================================
+// AUDIT LOG
+// ============================================================================
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  
+  action          String   @db.VarChar(100)  // 'news_collected', 'post_generated', 'post_published', etc
+  entityType      String   @db.VarChar(50)   // 'news', 'post', 'blotato_post'
+  entityId        String   @db.VarChar(200)
+  
+  userId          String?  @db.VarChar(100)  // Who did the action
+  details         Json?    // Additional context
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
