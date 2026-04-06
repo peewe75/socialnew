@@ -1,12 +1,22 @@
 import { FC } from 'react';
 import { UserButton, useUser } from '@clerk/clerk-react';
 import { useAppStore } from '../store/appStore';
+import { isClerkEnabled } from '../config/runtime';
 
-const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const AuthUserInfo: FC = () => {
+  const { user } = useUser();
+
+  return (
+    <div className="flex items-center gap-3">
+      {user && <span className="text-sm text-gray-700">{user.firstName || user.emailAddresses?.[0]?.emailAddress}</span>}
+      <UserButton afterSignOutUrl="/" />
+    </div>
+  );
+};
 
 export const Navigation: FC = () => {
   const { error, setError } = useAppStore();
-  const { user } = CLERK_ENABLED ? useUser() : { user: null };
+  const clerkEnabled = isClerkEnabled();
 
   return (
     <div className="bg-white border-b border-gray-200 shadow-sm">
@@ -35,11 +45,8 @@ export const Navigation: FC = () => {
           )}
 
           {/* User info */}
-          {CLERK_ENABLED ? (
-            <div className="flex items-center gap-3">
-              {user && <span className="text-sm text-gray-700">{user.firstName || user.emailAddresses?.[0]?.emailAddress}</span>}
-              <UserButton afterSignOutUrl="/" />
-            </div>
+          {clerkEnabled ? (
+            <AuthUserInfo />
           ) : (
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-gray-300 rounded-full"></div>

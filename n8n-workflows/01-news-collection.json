@@ -1,0 +1,107 @@
+{
+  "name": "1️⃣ News Collection - Every 6 Hours",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": ["hours"],
+          "value": 6
+        }
+      },
+      "name": "Trigger (Every 6 hours)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/news/collect",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topics",
+              "value": "technology, artificial intelligence, innovation, startups, business"
+            },
+            {
+              "name": "limit",
+              "value": "3"
+            }
+          ]
+        }
+      },
+      "name": "Collect News from Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [550, 300]
+    },
+    {
+      "parameters": {
+        "text": "✅ News Collection Completed\n\n📊 Stats:\n- Items collected: {{ $node[\"Collect News from Backend\"].json.count }}\n- Topics: technology, AI, innovation, startups\n- Timestamp: {{ $now }}\n\n📝 Next: Content will be generated and sent for approval",
+        "channel": "#automation"
+      },
+      "name": "Slack Notification - Success",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 3.0,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "text": "❌ News Collection Failed\n\nError: {{ $error.message }}\n\nPlease check the backend logs.",
+        "channel": "#automation"
+      },
+      "name": "Slack Notification - Error",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 3.0,
+      "position": [850, 500]
+    }
+  ],
+  "connections": {
+    "Trigger (Every 6 hours)": {
+      "main": [
+        [
+          {
+            "node": "Collect News from Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect News from Backend": {
+      "main": [
+        [
+          {
+            "node": "Slack Notification - Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack Notification - Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}

@@ -1,0 +1,109 @@
+{
+  "name": "News Collection & Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": ["hours"],
+          "value": 6
+        }
+      },
+      "name": "Trigger (Every 6 hours)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/news/collect",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topics",
+              "value": "tecnologia, innovazione, intelligenza artificiale"
+            },
+            {
+              "name": "limit",
+              "value": "3"
+            }
+          ]
+        }
+      },
+      "name": "Call Backend News Collection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [550, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/news/generate",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "newsItems",
+              "value": "={{ $json }}"
+            }
+          ]
+        }
+      },
+      "name": "Generate Posts for Platforms",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    }
+  ],
+  "connections": {
+    "Trigger (Every 6 hours)": {
+      "main": [
+        [
+          {
+            "node": "Call Backend News Collection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Backend News Collection": {
+      "main": [
+        [
+          {
+            "node": "Generate Posts for Platforms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

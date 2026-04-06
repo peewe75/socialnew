@@ -4,6 +4,7 @@
   "description": "News collection, AI generation, and multi-platform publishing with Blotato",
   "main": "dist/app.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "ts-node src/app.ts",
     "build": "tsc",
     "start": "node dist/app.js",
@@ -13,6 +14,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/backend": "^3.2.4",
     "@prisma/client": "^5.7.1",
     "axios": "^1.6.2",
     "cors": "^2.8.5",

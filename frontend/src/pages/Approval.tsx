@@ -1,7 +1,7 @@
 import { FC, useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
-import { publishAPI, newsAPI } from '../utils/api';
+import { approvalAPI, publishAPI, newsAPI } from '../utils/api';
 import PostPreview from '../components/PostPreview';
 
 interface ApprovalPost {
@@ -20,16 +20,53 @@ interface ApprovalPost {
 export const Approval: FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { loading, setLoading, error, setError } = useAppStore();
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalPost[]>([]);
   const [selectedPost, setSelectedPost] = useState<ApprovalPost | null>(null);
   const [editedContent, setEditedContent] = useState<Record<string, string>>({});
   const [scheduleTime, setScheduleTime] = useState('');
   const [publishResult, setPublishResult] = useState<string | null>(null);
+  const [resumeResult, setResumeResult] = useState<string | null>(null);
+
+  const resumeUrl = searchParams.get('resumeUrl') || '';
+  const quickTitle = searchParams.get('title') || '';
+  const quickLink = searchParams.get('link') || '';
+  const quickPlatforms = (searchParams.get('platforms') || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const quickPreview = searchParams.get('preview') || '';
+  const isQuickApprovalMode = Boolean(resumeUrl);
 
   useEffect(() => {
+    if (isQuickApprovalMode) {
+      return;
+    }
     loadPendingApprovals();
-  }, []);
+  }, [isQuickApprovalMode]);
+
+  const handleResumeApproval = async (approved: boolean) => {
+    if (!resumeUrl) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      setResumeResult(null);
+
+      await approvalAPI.resume({ resumeUrl, approved });
+
+      setResumeResult(
+        approved
+          ? 'Approvazione inviata correttamente al workflow.'
+          : 'Rifiuto inviato correttamente al workflow.'
+      );
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.response?.data?.details?.message || err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadPendingApprovals = async () => {
     try {
@@ -166,13 +203,70 @@ export const Approval: FC = () => {
         </div>
       )}
 
-      {loading && pendingApprovals.length === 0 && (
+      {resumeResult && (
+        <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
+          <p className="text-sm text-green-700 font-medium">{resumeResult}</p>
+        </div>
+      )}
+
+      {isQuickApprovalMode && (
+        <div className="space-y-6">
+          <div className="card space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">{quickTitle || 'Richiesta di approvazione'}</h2>
+              {quickLink && (
+                <a
+                  href={quickLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                >
+                  Apri fonte
+                </a>
+              )}
+            </div>
+
+            {quickPlatforms.length > 0 && (
+              <p className="text-sm text-gray-600">
+                Piattaforme: {quickPlatforms.join(', ')}
+              </p>
+            )}
+
+            {quickPreview && (
+              <textarea
+                readOnly
+                value={quickPreview}
+                className="w-full h-80 px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm bg-gray-50"
+              />
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleResumeApproval(true)}
+                disabled={loading}
+                className="flex-1 btn btn-success disabled:opacity-50"
+              >
+                {loading ? 'Invio...' : 'Approva'}
+              </button>
+              <button
+                onClick={() => handleResumeApproval(false)}
+                disabled={loading}
+                className="flex-1 btn btn-danger disabled:opacity-50"
+              >
+                {loading ? 'Invio...' : 'Rifiuta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isQuickApprovalMode && loading && pendingApprovals.length === 0 && (
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
       )}
 
-      {!loading && pendingApprovals.length === 0 && (
+      {!isQuickApprovalMode && !loading && pendingApprovals.length === 0 && (
         <div className="card text-center py-16">
           <p className="text-gray-500 text-lg mb-2">Nessun contenuto in attesa di approvazione</p>
           <p className="text-gray-400 text-sm">Vai alla pagina News per raccogliere e generare nuovi contenuti</p>
@@ -185,7 +279,7 @@ export const Approval: FC = () => {
         </div>
       )}
 
-      {pendingApprovals.length > 0 && (
+      {!isQuickApprovalMode && pendingApprovals.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Pending List */}
           <div className="space-y-3">

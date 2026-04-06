@@ -1,0 +1,58 @@
+{
+  "name": "3️⃣ Human Approval Workflow (HITL)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "approval-webhook"
+      },
+      "name": "Webhook (From Your System)",
+      "type": "n8n-nodes-base.webhookTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  newsId: $input.first().json.newsId,\n  title: $input.first().json.title,\n  platforms: ['linkedin', 'facebook', 'instagram'],\n  posts: $input.first().json.generatedPosts\n}"
+      },
+      "name": "Format for Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [550, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#pending-approvals",
+        "text": "🔔 New content awaiting approval:\n\n📝 Title: {{ $node[\"Format for Approval\"].json.title }}\n📊 Platforms: {{ $node[\"Format for Approval\"].json.platforms.join(', ') }}\n\n👉 <https://news-to-social.vercel.app/approve/{{ $node[\"Format for Approval\"].json.newsId }}|Review & Approve>"
+      },
+      "name": "Notify Slack for Review",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 3,
+      "position": [850, 300]
+    }
+  ],
+  "connections": {
+    "Webhook (From Your System)": {
+      "main": [
+        [
+          {
+            "node": "Format for Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format for Approval": {
+      "main": [
+        [
+          {
+            "node": "Notify Slack for Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

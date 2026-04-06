@@ -1,7 +1,10 @@
 import axios from 'axios';
+import { getPreferredAppOrigin } from '../config/runtime';
 
-// In produzione su Vercel, usa path relativi (/api). In dev locale, usa localhost:3001
-const API_BASE_URL = (import.meta.env.VITE_API_URL as string) || (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api');
+// In produzione usa l'alias stabile. I preview Vercel possono essere protetti e bloccare le chiamate API.
+const API_BASE_URL =
+  (import.meta.env.VITE_API_URL as string) ||
+  (import.meta.env.PROD ? `${getPreferredAppOrigin()}/api` : 'http://localhost:3001/api');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -12,9 +15,13 @@ const api = axios.create({
 
 // Interceptor per aggiungere il token Clerk alle richieste
 api.interceptors.request.use(async (config) => {
-  if (typeof window !== 'undefined' && (window as any).__clerk_session) {
+  if (typeof window !== 'undefined') {
     try {
-      const token = await (window as any).__clerk_session.getToken();
+      const clerkSession =
+        (window as any).Clerk?.session ||
+        (window as any).__clerk_session;
+      const token = await clerkSession?.getToken?.();
+
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -37,6 +44,18 @@ export const newsAPI = {
     api.post('/news/generate', { newsItems }),
 };
 
+// n8n Pipeline API
+export const n8nAPI = {
+  trigger: (topics: string, limit: number = 3) =>
+    api.post('/n8n/trigger', { topics, limit }),
+
+  send: (newsItems: any[]) =>
+    api.post('/n8n/send', { newsItems }),
+
+  health: () =>
+    api.get('/n8n/health'),
+};
+
 // Publishing API
 export const publishAPI = {
   getAccounts: () =>
@@ -53,6 +72,9 @@ export const publishAPI = {
 export const approvalAPI = {
   submit: (data: any) =>
     api.post('/approval/submit', data),
+
+  resume: (data: { resumeUrl: string; approved: boolean; reason?: string }) =>
+    api.post('/approval/resume', data),
 
   getStatus: (newsId: string) =>
     api.get(`/approval/status/${newsId}`),

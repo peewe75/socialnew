@@ -1,0 +1,140 @@
+{
+  "name": "5️⃣ FULL PIPELINE: News → Approval → Blotato",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": ["hours"],
+          "value": 6
+        }
+      },
+      "name": "⏰ Trigger (6 hours)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 100]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/news/collect",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topics",
+              "value": "tech, AI, innovation, startups, business"
+            },
+            {
+              "name": "limit",
+              "value": "3"
+            }
+          ]
+        }
+      },
+      "name": "📰 Step 1: Collect News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/news/generate",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "newsItems",
+              "value": "={{ $node[\"📰 Step 1: Collect News\"].json.data }}"
+            }
+          ]
+        }
+      },
+      "name": "📝 Step 2: Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [550, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#automation-status",
+        "text": "🚀 Pipeline Status:\n\n1️⃣ News collected: {{ $node[\"📰 Step 1: Collect News\"].json.count }} items\n2️⃣ Content generated: {{ $node[\"📝 Step 2: Generate Content\"].json.generated }} posts\n\n⏳ Waiting for approval...\n\n👉 Review at: https://news-to-social.vercel.app/"
+      },
+      "name": "📊 Status Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 3,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/health",
+        "method": "GET"
+      },
+      "name": "✅ Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [250, 500]
+    }
+  ],
+  "connections": {
+    "⏰ Trigger (6 hours)": {
+      "main": [
+        [
+          {
+            "node": "📰 Step 1: Collect News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📰 Step 1: Collect News": {
+      "main": [
+        [
+          {
+            "node": "📝 Step 2: Generate Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Step 2: Generate Content": {
+      "main": [
+        [
+          {
+            "node": "📊 Status Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

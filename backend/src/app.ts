@@ -10,6 +10,7 @@ import approvalRoutes from './routes/approvalRoutes';
 import mediaRoutes from './routes/mediaRoutes';
 import avatarRoutes from './routes/avatarRoutes';
 import analyticsRoutes from './routes/analyticsRoutes';
+import n8nRoutes from './routes/n8nRoutes';
 
 dotenv.config();
 
@@ -26,9 +27,20 @@ const allowedOrigins = [
   'http://localhost:5173',
 ].filter(Boolean);
 
+const isAllowedVercelPreviewOrigin = (origin?: string) => {
+  if (!origin) return false;
+
+  try {
+    const hostname = new URL(origin).hostname;
+    return hostname.endsWith('.vercel.app') && hostname.includes('news-to-social');
+  } catch {
+    return false;
+  }
+};
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin) || isAllowedVercelPreviewOrigin(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -58,6 +70,13 @@ app.get('/health', async (req: Request, res: Response) => {
   }
 });
 
+// Public frontend config used at runtime by the Vite app.
+app.get('/api/public-config', (_req: Request, res: Response) => {
+  res.json({
+    clerkPublishableKey: process.env.VITE_CLERK_PUBLISHABLE_KEY || null,
+  });
+});
+
 // Auth middleware (skip if CLERK_SECRET_KEY not set)
 import { requireAuth } from './middleware/auth';
 if (process.env.CLERK_SECRET_KEY) {
@@ -71,6 +90,7 @@ app.use('/api/approval', approvalRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/avatar', avatarRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/n8n', n8nRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

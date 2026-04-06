@@ -1,0 +1,109 @@
+{
+  "name": "5️⃣ Analytics Collection - Daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": ["days"],
+          "value": 1
+        },
+        "triggerAtHour": 8
+      },
+      "name": "Trigger (Daily at 8am)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/analytics/dashboard",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        }
+      },
+      "name": "Get Analytics Dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [550, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const dashboard = $input.first().json.dashboard;\nconst summary = dashboard.summary;\n\nreturn {\n  date: new Date().toLocaleDateString(),\n  totalViews: summary.totalViews,\n  totalEngagement: summary.totalEngagement,\n  averageEngagement: summary.averageEngagement.toFixed(2),\n  topPlatform: summary.topPlatform.name,\n  trends: summary.trends.improvementAreas\n}"
+      },
+      "name": "Format Analytics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "text": "📊 Daily Analytics Report\n\n📅 Date: {{ $node[\"Format Analytics\"].json.date }}\n\n📈 Metrics:\n- Total Views: {{ $node[\"Format Analytics\"].json.totalViews }}\n- Total Engagement: {{ $node[\"Format Analytics\"].json.totalEngagement }}\n- Avg Engagement: {{ $node[\"Format Analytics\"].json.averageEngagement }}%\n- Top Platform: {{ $node[\"Format Analytics\"].json.topPlatform }}\n\n💡 Recommendations:\n{{ $node[\"Format Analytics\"].json.trends.map((t, i) => (i+1) + \". \" + t).join(\"\\n\") }}",
+        "channel": "#analytics"
+      },
+      "name": "Slack - Analytics Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 3.0,
+      "position": [1150, 300]
+    },
+    {
+      "parameters": {
+        "subject": "📊 Daily Analytics Report",
+        "toEmail": "your@email.com",
+        "text": "Daily Report - {{ $node[\"Format Analytics\"].json.date }}\n\nViews: {{ $node[\"Format Analytics\"].json.totalViews }}\nEngagement: {{ $node[\"Format Analytics\"].json.averageEngagement }}%\nTop Platform: {{ $node[\"Format Analytics\"].json.topPlatform }}"
+      },
+      "name": "Email - Analytics",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1.0,
+      "position": [1150, 450]
+    }
+  ],
+  "connections": {
+    "Trigger (Daily at 8am)": {
+      "main": [
+        [
+          {
+            "node": "Get Analytics Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Analytics Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Format Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Analytics": {
+      "main": [
+        [
+          {
+            "node": "Slack - Analytics Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email - Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}

@@ -1,0 +1,242 @@
+{
+  "name": "6️⃣ Full Pipeline - News → Webhook → Blotato → Analytics",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": ["hours"],
+          "value": 6
+        }
+      },
+      "name": "Trigger (Every 6 hours)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 100]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/news/collect",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "topics",
+              "value": "tech, AI, innovation, startups, business, science"
+            },
+            {
+              "name": "limit",
+              "value": "3"
+            }
+          ]
+        }
+      },
+      "name": "📰 Step 1: Collect News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/news/generate",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "newsItems",
+              "value": "={{ $node[\"📰 Step 1: Collect News\"].json.data }}"
+            }
+          ]
+        }
+      },
+      "name": "📝 Step 2: Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [550, 300]
+    },
+    {
+      "parameters": {
+        "waitForm": true,
+        "waitTime": 3600000
+      },
+      "name": "⏳ Step 3: Wait for Approval",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/publish/approve",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "newsId",
+              "value": "={{ $json.newsId }}"
+            },
+            {
+              "name": "approved",
+              "value": "=true"
+            },
+            {
+              "name": "platforms",
+              "value": "={{ $json.platforms }}"
+            },
+            {
+              "name": "generatedPosts",
+              "value": "={{ $json.generatedPosts }}"
+            },
+            {
+              "name": "scheduledTime",
+              "value": "={{ $json.scheduledTime }}"
+            }
+          ]
+        }
+      },
+      "name": "🚀 Step 4: Publish to Blotato",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1150, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/analytics/dashboard",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        }
+      },
+      "name": "📊 Step 5: Collect Analytics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "text": "🎉 Full Pipeline Completed\n\n📊 Summary:\n- News collected: {{ $node[\"📰 Step 1: Collect News\"].json.count }}\n- Content generated: {{ $node[\"📝 Step 2: Generate Content\"].json.generated }}\n- Published posts: {{ $node[\"🚀 Step 4: Publish to Blotato\"].json.results.successful }}\n- Total views (current): {{ $node[\"📊 Step 5: Collect Analytics\"].json.dashboard.summary.totalViews }}\n\n✅ Pipeline Status: COMPLETED",
+        "channel": "#automation-status"
+      },
+      "name": "Slack - Pipeline Complete",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 3.0,
+      "position": [1750, 300]
+    }
+  ],
+  "connections": {
+    "Trigger (Every 6 hours)": {
+      "main": [
+        [
+          {
+            "node": "📰 Step 1: Collect News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📰 Step 1: Collect News": {
+      "main": [
+        [
+          {
+            "node": "📝 Step 2: Generate Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Step 2: Generate Content": {
+      "main": [
+        [
+          {
+            "node": "⏳ Step 3: Wait for Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⏳ Step 3: Wait for Approval": {
+      "main": [
+        [
+          {
+            "node": "🚀 Step 4: Publish to Blotato",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🚀 Step 4: Publish to Blotato": {
+      "main": [
+        [
+          {
+            "node": "📊 Step 5: Collect Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Step 5: Collect Analytics": {
+      "main": [
+        [
+          {
+            "node": "Slack - Pipeline Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

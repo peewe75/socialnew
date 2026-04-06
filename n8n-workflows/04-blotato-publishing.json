@@ -1,0 +1,161 @@
+{
+  "name": "4️⃣ Blotato Publishing - Multi-Platform",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "publish-approved",
+        "authentication": "none",
+        "responseMode": "onReceived"
+      },
+      "name": "Webhook - Approval Result",
+      "type": "n8n-nodes-base.webhookTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "value1": "={{ $json.approved }}",
+              "operation": "true"
+            }
+          ]
+        }
+      },
+      "name": "Is Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [550, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/publish/approve",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "newsId",
+              "value": "={{ $json.newsId }}"
+            },
+            {
+              "name": "approved",
+              "value": "={{ $json.approved }}"
+            },
+            {
+              "name": "platforms",
+              "value": "={{ $json.platforms }}"
+            },
+            {
+              "name": "generatedPosts",
+              "value": "={{ $json.generatedPosts }}"
+            },
+            {
+              "name": "scheduledTime",
+              "value": "={{ $json.scheduledTime }}"
+            }
+          ]
+        }
+      },
+      "name": "Publish to Blotato",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "text": "✅ Posts Published Successfully!\n\n📰 News: {{ $json.title }}\n\n📱 Platforms: {{ $node[\"Publish to Blotato\"].json.results.results.map(r => r.platform).join(\", \") }}\n\n📊 Results:\n- Successful: {{ $node[\"Publish to Blotato\"].json.results.successful }}\n- Failed: {{ $node[\"Publish to Blotato\"].json.results.failed }}\n\n⏰ Scheduled: {{ $json.scheduledTime || \"Immediate\" }}",
+        "channel": "#published"
+      },
+      "name": "Slack - Success",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 3.0,
+      "position": [1150, 300]
+    },
+    {
+      "parameters": {
+        "text": "❌ Post Rejected\n\n📰 News ID: {{ $json.newsId }}\n\n📝 Reason: {{ $json.rejectionReason || \"Not specified\" }}",
+        "channel": "#rejected"
+      },
+      "name": "Slack - Rejected",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 3.0,
+      "position": [1150, 500]
+    },
+    {
+      "parameters": {
+        "subject": "✅ Posts Published to Social Media",
+        "toEmail": "your@email.com",
+        "text": "Your content has been successfully published!\n\nPlatforms: {{ $node[\"Publish to Blotato\"].json.results.results.map(r => r.platform).join(\", \") }}\n\nScheduled for: {{ $json.scheduledTime || \"Immediately\" }}"
+      },
+      "name": "Email - Published",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1.0,
+      "position": [1150, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Approval Result": {
+      "main": [
+        [
+          {
+            "node": "Is Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Approved?": {
+      "main": [
+        [
+          {
+            "node": "Publish to Blotato",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack - Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish to Blotato": {
+      "main": [
+        [
+          {
+            "node": "Slack - Success",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email - Published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}

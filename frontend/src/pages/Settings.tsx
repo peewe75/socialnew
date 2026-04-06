@@ -1,4 +1,5 @@
-import { FC, useState } from 'react';
+import { FC, useState, useEffect } from 'react';
+import { n8nAPI } from '../utils/api';
 
 interface SettingsConfig {
   aiProvider: string;
@@ -8,15 +9,41 @@ interface SettingsConfig {
   blotatoConnected: boolean;
 }
 
+interface N8NStatus {
+  reachable: boolean;
+  loading: boolean;
+  error?: string;
+}
+
 export const Settings: FC = () => {
+  const apiBaseUrl =
+    import.meta.env.VITE_API_URL ||
+    (import.meta.env.PROD
+      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/api`
+      : 'http://localhost:3001/api');
   const [config, setConfig] = useState<SettingsConfig>({
     aiProvider: 'openrouter',
     defaultTopics: 'tech, AI, innovation',
     autoApprove: false,
-    n8nUrl: import.meta.env.VITE_N8N_URL || 'http://localhost:5678',
+    n8nUrl: import.meta.env.VITE_N8N_URL || 'https://sbmbcs.app.n8n.cloud',
     blotatoConnected: false,
   });
   const [saved, setSaved] = useState(false);
+  const [n8nStatus, setN8NStatus] = useState<N8NStatus>({ reachable: false, loading: true });
+
+  useEffect(() => {
+    checkN8NHealth();
+  }, []);
+
+  const checkN8NHealth = async () => {
+    setN8NStatus(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await n8nAPI.health();
+      setN8NStatus({ reachable: res.data.n8n?.reachable ?? false, loading: false });
+    } catch {
+      setN8NStatus({ reachable: false, loading: false, error: 'Backend non raggiungibile' });
+    }
+  };
 
   const handleSave = () => {
     // I settings verranno salvati nel backend quando connesso
@@ -92,18 +119,24 @@ export const Settings: FC = () => {
       {/* n8n Workflow Automation */}
       <div className="card">
         <h2 className="text-lg font-bold text-gray-900 mb-4">n8n Workflow Automation</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          n8n gestisce i workflow automatizzati: raccolta news, generazione contenuti, approvazione e pubblicazione.
-        </p>
+        <div className="flex items-center gap-2 mb-4">
+          <span className={`w-3 h-3 rounded-full ${n8nStatus.loading ? 'bg-yellow-400 animate-pulse' : n8nStatus.reachable ? 'bg-green-500' : 'bg-red-500'}`}></span>
+          <span className="text-sm text-gray-600">
+            {n8nStatus.loading ? 'Verifica connessione...' : n8nStatus.reachable ? 'n8n Cloud connesso' : n8nStatus.error || 'n8n non raggiungibile'}
+          </span>
+          {!n8nStatus.loading && (
+            <button onClick={checkN8NHealth} className="text-xs text-blue-600 hover:text-blue-800 ml-2">Ricontrolla</button>
+          )}
+        </div>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">URL n8n</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">URL n8n Cloud</label>
             <input
               type="text"
               value={config.n8nUrl}
               onChange={(e) => setConfig({ ...config, n8nUrl: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="http://localhost:5678"
+              placeholder="https://sbmbcs.app.n8n.cloud"
             />
           </div>
           <a
@@ -112,34 +145,38 @@ export const Settings: FC = () => {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 btn btn-primary"
           >
-            🔗 Apri n8n Dashboard
+            Apri n8n Dashboard
           </a>
           <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="font-medium text-gray-900 mb-2">Workflow disponibili:</h3>
+            <h3 className="font-medium text-gray-900 mb-2">Workflow attivo: News to Social - HITL Cloud</h3>
             <ul className="space-y-2 text-sm text-gray-700">
               <li className="flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                01 - News Collection (Perplexity)
+                Webhook Ricevi News
               </li>
               <li className="flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                02 - Content Generation (AI)
+                Genera Contenuti (AI) via backend
               </li>
               <li className="flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                03 - Approval Webhook
+                Notifiche Slack + Email
               </li>
               <li className="flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                04 - Blotato Publishing
+                HITL Approval (Wait node + app resume)
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                Pubblicazione (Upload media disattivato per text-only)
               </li>
               <li className="flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                05 - Analytics Collection
+                Schedule automatico ogni 6 ore
               </li>
               <li className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                06 - Full Pipeline (end-to-end)
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                Analytics report giornaliero
               </li>
             </ul>
           </div>
@@ -189,7 +226,7 @@ export const Settings: FC = () => {
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="p-3 bg-gray-50 rounded-lg">
             <p className="text-gray-600">Backend API</p>
-            <p className="font-mono font-medium">{import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}</p>
+            <p className="font-mono font-medium">{apiBaseUrl}</p>
           </div>
           <div className="p-3 bg-gray-50 rounded-lg">
             <p className="text-gray-600">n8n URL</p>

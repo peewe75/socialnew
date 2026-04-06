@@ -3,21 +3,28 @@ import ReactDOM from 'react-dom/client'
 import { ClerkProvider } from '@clerk/clerk-react'
 import App from './App.tsx'
 import './index.css'
+import { getClerkPublishableKey, loadRuntimeConfig } from './config/runtime'
 
-const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+async function bootstrap() {
+  await loadRuntimeConfig()
 
-if (!CLERK_PUBLISHABLE_KEY) {
-  console.warn('Missing VITE_CLERK_PUBLISHABLE_KEY - auth will not work')
+  const clerkPublishableKey = getClerkPublishableKey()
+
+  if (!clerkPublishableKey) {
+    console.warn('Missing VITE_CLERK_PUBLISHABLE_KEY - auth will not work')
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      {clerkPublishableKey ? (
+        <ClerkProvider publishableKey={clerkPublishableKey}>
+          <App />
+        </ClerkProvider>
+      ) : (
+        <App />
+      )}
+    </React.StrictMode>,
+  )
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    {CLERK_PUBLISHABLE_KEY ? (
-      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
-        <App />
-      </ClerkProvider>
-    ) : (
-      <App />
-    )}
-  </React.StrictMode>,
-)
+bootstrap()

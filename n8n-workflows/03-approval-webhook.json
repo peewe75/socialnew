@@ -1,0 +1,78 @@
+{
+  "name": "3️⃣ Approval Webhook - HITL",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "approval-webhook",
+        "authentication": "none",
+        "responseMode": "onReceived"
+      },
+      "name": "Webhook - From Your System",
+      "type": "n8n-nodes-base.webhookTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  newsId: $input.first().json.newsId,\n  title: $input.first().json.title,\n  summary: $input.first().json.summary,\n  platforms: Object.keys($input.first().json.generatedPosts.reduce((acc, p) => ({...acc, [p.platform]: true}), {})),\n  postCount: $input.first().json.generatedPosts.length,\n  timestamp: $input.first().json.timestamp\n}"
+      },
+      "name": "Extract Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [550, 300]
+    },
+    {
+      "parameters": {
+        "text": "🔔 New Content Awaiting Approval\n\n📰 News: {{ $node[\"Extract Data\"].json.title }}\n\n📊 Summary: {{ $node[\"Extract Data\"].json.summary }}\n\n📱 Platforms: {{ $node[\"Extract Data\"].json.platforms.join(\", \") }}\n\n📝 Posts Generated: {{ $node[\"Extract Data\"].json.postCount }}\n\n👉 <https://news-to-social.vercel.app/approve|Review & Approve>\n\nTimestamp: {{ $node[\"Extract Data\"].json.timestamp }}",
+        "channel": "#pending-approvals"
+      },
+      "name": "Slack - Pending Review",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 3.0,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "subject": "⏳ Content Pending Approval",
+        "toEmail": "your@email.com",
+        "text": "News: {{ $node[\"Extract Data\"].json.title }}\n\nPlatforms: {{ $node[\"Extract Data\"].json.platforms.join(\", \") }}\n\nPlease review and approve at: https://news-to-social.vercel.app/approve"
+      },
+      "name": "Email - Approval Needed",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1.0,
+      "position": [850, 500]
+    }
+  ],
+  "connections": {
+    "Webhook - From Your System": {
+      "main": [
+        [
+          {
+            "node": "Extract Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Data": {
+      "main": [
+        [
+          {
+            "node": "Slack - Pending Review",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email - Approval Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}

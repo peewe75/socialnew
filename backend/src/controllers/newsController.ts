@@ -2,12 +2,112 @@ import { Request, Response } from 'express';
 import { PerplexityService } from '../services/perplexity.service';
 import { ContentGeneratorService } from '../services/contentGenerator.service';
 import { WebhookHandlerService } from '../services/webhookHandler.service';
-import { WebhookPayload } from '../types';
+import { NewsItem, WebhookPayload } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
-const perplexityService = new PerplexityService();
-const contentGeneratorService = new ContentGeneratorService();
 const webhookService = new WebhookHandlerService();
+
+const isRateLimitedError = (error: any) =>
+  error?.response?.status === 429 || String(error?.message || '').includes('429');
+
+const buildFallbackPost = (
+  platform: 'linkedin' | 'facebook' | 'instagram' | 'tiktok',
+  newsItem: any
+) => {
+  const title = newsItem.title;
+  const summary = newsItem.summary;
+  const source = newsItem.source;
+
+  const contentByPlatform = {
+    linkedin: `${title}\n\n${summary}\n\nFonte: ${source}\nCosa ne pensi di questo aggiornamento?`,
+    facebook: `${title}\n\n${summary}\n\nTu come la vedi? Scrivilo nei commenti.`,
+    instagram: `${title}\n\n${summary}\n\nSalva il post per rileggerlo e condividilo con chi segue il tema.`,
+    tiktok: `Hook: oggi ti racconto questa notizia.\n${title}\n${summary}\nChiudi con: seguimi per altri aggiornamenti.`,
+  };
+
+  return {
+    platform,
+    content: contentByPlatform[platform],
+    hashtags: ['#ai', '#tech', '#innovation', '#news'],
+  };
+};
+
+const buildFallbackBlogPost = (newsItem: any) => `# ${newsItem.title}
+
+${newsItem.summary}
+
+Fonte: ${newsItem.source}
+
+Link originale: ${newsItem.link}
+
+## Cosa significa
+
+Questa e una bozza fallback generata quando il provider AI era temporaneamente in rate limit. Il contenuto puo essere rifinito prima della pubblicazione finale.
+`;
+
+async function withRateLimitFallback<T>(
+  label: string,
+  task: () => Promise<T>,
+  fallback: () => T
+): Promise<T> {
+  try {
+    return await task();
+  } catch (error: any) {
+    if (isRateLimitedError(error)) {
+      console.warn(`⚠️ ${label} fallback used due to provider rate limit`);
+      return fallback();
+    }
+    throw error;
+  }
+}
+
+const coerceNewsItem = (value: any): NewsItem | null => {
+  if (!value || typeof value !== 'object') return null;
+
+  const candidate = {
+    id: value.id || value.newsId || uuidv4(),
+    title: value.title,
+    summary: value.summary || value.content || '',
+    source: value.source || 'Unknown',
+    link: value.link || value.url || '',
+    date: value.date || new Date().toISOString().slice(0, 10),
+  };
+
+  if (!candidate.title || !candidate.summary) {
+    return null;
+  }
+
+  return candidate;
+};
+
+const normalizeNewsItems = (input: any): NewsItem[] => {
+  if (!input) return [];
+
+  if (typeof input === 'string') {
+    try {
+      return normalizeNewsItems(JSON.parse(input));
+    } catch {
+      return [];
+    }
+  }
+
+  if (Array.isArray(input)) {
+    return input
+      .map((item) => coerceNewsItem(item))
+      .filter((item): item is NewsItem => item !== null);
+  }
+
+  if (typeof input === 'object') {
+    if (Array.isArray(input.newsItems) || typeof input.newsItems === 'string') {
+      return normalizeNewsItems(input.newsItems);
+    }
+
+    const singleItem = coerceNewsItem(input);
+    return singleItem ? [singleItem] : [];
+  }
+
+  return [];
+};
 
 /**
  * POST /api/news/collect
@@ -15,6 +115,7 @@ const webhookService = new WebhookHandlerService();
  */
 export const collectNews = async (req: Request, res: Response) => {
   try {
+    const perplexityService = new PerplexityService();
     const { topics = 'tech, AI, innovation', limit = 3 } = req.body;
 
     console.log(`\n📰 STAGE 1: NEWS COLLECTION`);
@@ -39,7 +140,8 @@ export const collectNews = async (req: Request, res: Response) => {
  */
 export const generatePosts = async (req: Request, res: Response) => {
   try {
-    const { newsItems } = req.body;
+    const contentGeneratorService = new ContentGeneratorService();
+    const newsItems = normalizeNewsItems(req.body?.newsItems ?? req.body);
 
     if (!newsItems || !Array.isArray(newsItems) || newsItems.length === 0) {
       return res.status(400).json({ error: 'Invalid or empty newsItems' });
@@ -54,11 +156,31 @@ export const generatePosts = async (req: Request, res: Response) => {
       console.log(`   ▸ Generating for: "${newsItem.title}"`);
 
       // Genera per tutte le piattaforme
-      const linkedinPost = await contentGeneratorService.generateLinkedInPost(newsItem);
-      const facebookPost = await contentGeneratorService.generateFacebookPost(newsItem);
-      const instagramCaption = await contentGeneratorService.generateInstagramCaption(newsItem);
-      const tiktokScript = await contentGeneratorService.generateTikTokScript(newsItem);
-      const blogPost = await contentGeneratorService.generateBlogPost(newsItem);
+      const linkedinPost = await withRateLimitFallback(
+        'LinkedIn generation',
+        () => contentGeneratorService.generateLinkedInPost(newsItem),
+        () => buildFallbackPost('linkedin', newsItem)
+      );
+      const facebookPost = await withRateLimitFallback(
+        'Facebook generation',
+        () => contentGeneratorService.generateFacebookPost(newsItem),
+        () => buildFallbackPost('facebook', newsItem)
+      );
+      const instagramCaption = await withRateLimitFallback(
+        'Instagram generation',
+        () => contentGeneratorService.generateInstagramCaption(newsItem),
+        () => buildFallbackPost('instagram', newsItem)
+      );
+      const tiktokScript = await withRateLimitFallback(
+        'TikTok generation',
+        () => contentGeneratorService.generateTikTokScript(newsItem),
+        () => buildFallbackPost('tiktok', newsItem)
+      );
+      const blogPost = await withRateLimitFallback(
+        'Blog generation',
+        () => contentGeneratorService.generateBlogPost(newsItem),
+        () => buildFallbackBlogPost(newsItem)
+      );
 
       // Prepara webhook payload
       const payload: WebhookPayload = {

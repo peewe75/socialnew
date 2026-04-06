@@ -1,0 +1,128 @@
+{
+  "name": "2️⃣ Content Generation - Manual",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerEvents": ["manually"]
+      },
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/news/list",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        }
+      },
+      "name": "Get Recent News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [550, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/news/generate",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "newsItems",
+              "value": "={{ $node[\"Get Recent News\"].json.data }}"
+            }
+          ]
+        }
+      },
+      "name": "Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "subject": "📝 New Content Generated - Ready for Approval",
+        "toEmail": "your@email.com",
+        "text": "New content has been generated and is ready for approval.\n\nGenerated Posts: {{ $node[\"Generate Content\"].json.generated }}\n\nReview at: https://news-to-social.vercel.app/approve"
+      },
+      "name": "Send Email Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1.0,
+      "position": [1150, 300]
+    },
+    {
+      "parameters": {
+        "text": "📝 Content Generated Successfully\n\nPosts Generated: {{ $node[\"Generate Content\"].json.generated }}\n\n⏳ Status: Waiting for approval\n\n👉 Review at: https://news-to-social.vercel.app/approve",
+        "channel": "#automation"
+      },
+      "name": "Slack - Content Ready",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 3.0,
+      "position": [1150, 450]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Recent News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Recent News": {
+      "main": [
+        [
+          {
+            "node": "Generate Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Content": {
+      "main": [
+        [
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack - Content Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

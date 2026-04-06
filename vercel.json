@@ -1,9 +1,5 @@
 {
   "version": 2,
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/dist",
-  "installCommand": "cd frontend && npm install && cd ../backend && npm install",
-  "framework": null,
   "builds": [
     {
       "src": "backend/api/index.ts",
@@ -22,6 +18,14 @@
     {
       "src": "/health",
       "dest": "/backend/api/index.ts"
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "/frontend/dist/assets/$1"
+    },
+    {
+      "src": "/vite.svg",
+      "dest": "/frontend/dist/vite.svg"
     },
     {
       "handle": "filesystem"

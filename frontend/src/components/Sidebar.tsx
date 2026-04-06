@@ -1,8 +1,7 @@
 import { FC } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { SignOutButton } from '@clerk/clerk-react';
-
-const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+import { isClerkEnabled } from '../config/runtime';
 
 const menuItems = [
   { icon: '📊', label: 'Dashboard', path: '/' },
@@ -15,6 +14,7 @@ const menuItems = [
 
 export const Sidebar: FC = () => {
   const location = useLocation();
+  const clerkEnabled = isClerkEnabled();
 
   return (
     <aside className="w-64 bg-gray-900 text-white flex flex-col">
@@ -40,7 +40,7 @@ export const Sidebar: FC = () => {
       </nav>
 
       <div className="p-4 border-t border-gray-700">
-        {CLERK_ENABLED ? (
+        {clerkEnabled ? (
           <SignOutButton>
             <button className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors">
               Logout
