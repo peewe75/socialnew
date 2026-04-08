@@ -22,6 +22,11 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     return next();
   }
 
+  // n8n calls /publish/approve after HITL approval — no Clerk token available.
+  if (req.path === '/publish/approve' && req.method === 'POST') {
+    return next();
+  }
+
   // n8n health/config are read-only informational endpoints.
   if (req.path === '/n8n/health' || req.path === '/n8n/config') {
     return next();
