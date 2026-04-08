@@ -1,11 +1,17 @@
 import { GeneratedPost, NewsItem } from '../types';
 import { AIService } from './ai.service';
 
-/** Estrae il primo oggetto JSON da una stringa (anche con testo intorno) */
-function extractJSON(text: string): any {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error(`No JSON found in AI response: ${text.slice(0, 100)}`);
-  return JSON.parse(match[0]);
+/** Estrae il primo oggetto JSON da una stringa; se non trovato usa il testo come content */
+function extractJSON(text: string, fallbackPlatform?: string): any {
+  // Prova a trovare JSON embedded nel testo
+  const match = text.match(/\{[\s\S]*?\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]);
+    } catch {}
+  }
+  // Fallback: tratta il testo intero come campo content
+  return { content: text.trim(), hashtags: [] };
 }
 
 export class ContentGeneratorService {
