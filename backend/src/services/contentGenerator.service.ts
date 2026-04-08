@@ -1,6 +1,13 @@
 import { GeneratedPost, NewsItem } from '../types';
 import { AIService } from './ai.service';
 
+/** Estrae il primo oggetto JSON da una stringa (anche con testo intorno) */
+function extractJSON(text: string): any {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error(`No JSON found in AI response: ${text.slice(0, 100)}`);
+  return JSON.parse(match[0]);
+}
+
 export class ContentGeneratorService {
   private aiService = new AIService();
 
@@ -34,7 +41,7 @@ Rispondi SOLO in questo formato JSON (no markdown):
         { role: 'user', content: prompt },
       ]);
 
-      const result = JSON.parse(response);
+      const result = extractJSON(response);
 
       return {
         platform: 'linkedin',
@@ -76,7 +83,7 @@ Rispondi SOLO in JSON:
         { role: 'user', content: prompt },
       ]);
 
-      const result = JSON.parse(response);
+      const result = extractJSON(response);
 
       return {
         platform: 'facebook',
@@ -118,7 +125,7 @@ JSON:
         { role: 'user', content: prompt },
       ]);
 
-      const result = JSON.parse(response);
+      const result = extractJSON(response);
 
       return {
         platform: 'instagram',
@@ -161,7 +168,7 @@ JSON:
         { role: 'user', content: prompt },
       ]);
 
-      const result = JSON.parse(response);
+      const result = extractJSON(response);
 
       return {
         platform: 'tiktok',
