@@ -7,8 +7,16 @@ import { v4 as uuidv4 } from 'uuid';
 
 const webhookService = new WebhookHandlerService();
 
-const isRateLimitedError = (error: any) =>
-  error?.response?.status === 429 || String(error?.message || '').includes('429');
+const isAIProviderError = (error: any) => {
+  const status = error?.response?.status;
+  const msg = String(error?.message || '');
+  // 429 rate limit, 404 model not found, 503 service unavailable
+  return status === 429 || status === 404 || status === 503
+    || msg.includes('429') || msg.includes('404') || msg.includes('503');
+};
+
+/** @deprecated use isAIProviderError */
+const isRateLimitedError = isAIProviderError;
 
 const buildFallbackPost = (
   platform: 'linkedin' | 'facebook' | 'instagram' | 'tiktok',
@@ -53,8 +61,9 @@ async function withRateLimitFallback<T>(
   try {
     return await task();
   } catch (error: any) {
-    if (isRateLimitedError(error)) {
-      console.warn(`⚠️ ${label} fallback used due to provider rate limit`);
+    if (isAIProviderError(error)) {
+      const status = error?.response?.status ?? 'unknown';
+      console.warn(`⚠️ ${label} fallback used (AI provider error: ${status})`);
       return fallback();
     }
     throw error;
