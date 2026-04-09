@@ -24,13 +24,29 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "value1": "={{ $json.approved }}",
+              "operation": "true"
+            }
+          ]
+        }
+      },
+      "name": "Is Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
         "text": "🔔 New Content Awaiting Approval\n\n📰 News: {{ $node[\"Extract Data\"].json.title }}\n\n📊 Summary: {{ $node[\"Extract Data\"].json.summary }}\n\n📱 Platforms: {{ $node[\"Extract Data\"].json.platforms.join(\", \") }}\n\n📝 Posts Generated: {{ $node[\"Extract Data\"].json.postCount }}\n\n👉 <https://news-to-social.vercel.app/approve|Review & Approve>\n\nTimestamp: {{ $node[\"Extract Data\"].json.timestamp }}",
         "channel": "#pending-approvals"
       },
       "name": "Slack - Pending Review",
       "type": "n8n-nodes-base.slack",
       "typeVersion": 3.0,
-      "position": [850, 300]
+      "position": [550, 100]
     },
     {
       "parameters": {
@@ -41,7 +57,55 @@
       "name": "Email - Approval Needed",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 1.0,
-      "position": [850, 500]
+      "position": [550, 500]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/publish-approved",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "newsId",
+              "value": "={{ $json.newsId }}"
+            },
+            {
+              "name": "approved",
+              "value": "={{ $json.approved }}"
+            },
+            {
+              "name": "platforms",
+              "value": "={{ $json.platforms }}"
+            },
+            {
+              "name": "generatedPosts",
+              "value": "={{ $json.generatedPosts }}"
+            },
+            {
+              "name": "scheduledTime",
+              "value": "={{ $json.scheduleTime || $node[\"Extract Data\"].json.timestamp }}"
+            }
+          ]
+        }
+      },
+      "name": "Publish to Blotato (Direct)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1150, 300]
     }
   ],
   "connections": {
@@ -60,12 +124,32 @@
       "main": [
         [
           {
+            "node": "Is Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Approved?": {
+      "main": [
+        [
+          {
             "node": "Slack - Pending Review",
             "type": "main",
             "index": 0
-          },
+          }
+        ],
+        [
           {
             "node": "Email - Approval Needed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Publish to Blotato (Direct)",
             "type": "main",
             "index": 0
           }
