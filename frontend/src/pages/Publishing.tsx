@@ -1,9 +1,21 @@
-import { FC, useEffect, useState } from 'react';
-import { useAppStore } from '../store/appStore';
+import { FC, useEffect, useMemo, useState } from 'react';
 import { publishAPI } from '../utils/api';
 
-interface Account {
-  accountType: string;
+interface RawAccount {
+  accountType?: string;
+  platform?: string;
+  type?: string;
+  displayName?: string;
+  name?: string;
+  username?: string;
+  profileUrl?: string;
+  id?: string;
+  isActive?: boolean;
+  active?: boolean;
+}
+
+interface AccountView {
+  platform: string;
   displayName: string;
   profileUrl?: string;
   isActive: boolean;
@@ -18,19 +30,25 @@ const platformColors: Record<string, string> = {
 
 const platformIcons: Record<string, string> = {
   linkedin: '💼',
-  facebook: 'f',
+  facebook: '📘',
   instagram: '📷',
   tiktok: '🎵',
 };
 
-export const Publishing: FC = () => {
-  const { loading, setLoading, setError } = useAppStore();
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [filterPlatform, setFilterPlatform] = useState('all');
+function normalizeAccount(account: RawAccount): AccountView {
+  return {
+    platform: String(account.accountType || account.platform || account.type || 'unknown').toLowerCase(),
+    displayName: String(account.displayName || account.name || account.username || account.profileUrl || account.id || 'Account collegato'),
+    profileUrl: account.profileUrl,
+    isActive: account.isActive ?? account.active ?? true,
+  };
+}
 
-  useEffect(() => {
-    loadAccounts();
-  }, []);
+export const Publishing: FC = () => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<AccountView[]>([]);
+  const [filterPlatform, setFilterPlatform] = useState('all');
 
   const loadAccounts = async () => {
     try {
@@ -38,14 +56,26 @@ export const Publishing: FC = () => {
       setError(null);
       const response = await publishAPI.getAccounts();
       if (response.data.success) {
-        setAccounts(response.data.accounts || []);
+        setAccounts((response.data.accounts || []).map(normalizeAccount));
+      } else {
+        setAccounts([]);
       }
     } catch (err: any) {
       setAccounts([]);
+      setError(err.response?.data?.error || err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadAccounts();
+  }, []);
+
+  const filteredAccounts = useMemo(() => {
+    if (filterPlatform === 'all') return accounts;
+    return accounts.filter((account) => account.platform === filterPlatform);
+  }, [accounts, filterPlatform]);
 
   return (
     <div className="space-y-6">
@@ -54,12 +84,11 @@ export const Publishing: FC = () => {
         <p className="text-gray-600 mt-2">Gestisci le pubblicazioni sui social media</p>
       </div>
 
-      {/* Account connessi */}
       <div className="card">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold text-gray-900">Account Connessi (Blotato)</h2>
           <button onClick={loadAccounts} disabled={loading} className="btn btn-primary text-sm disabled:opacity-50">
-            🔄 Aggiorna
+            {loading ? 'Aggiornamento...' : 'Aggiorna'}
           </button>
         </div>
 
@@ -69,70 +98,86 @@ export const Publishing: FC = () => {
           </div>
         )}
 
-        {!loading && accounts.length === 0 && (
+        {error && (
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg mb-4">
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {!loading && accounts.length === 0 && !error && (
           <div className="text-center py-8">
             <p className="text-gray-500 mb-2">Nessun account connesso</p>
             <p className="text-gray-400 text-sm">
-              Configura le API keys di Blotato nella pagina Settings per connettere i tuoi account social.
+              Collega i social in Blotato e poi premi Aggiorna per rilevare gli account attivi.
             </p>
           </div>
         )}
 
         {accounts.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {accounts.map((account, i) => (
-              <div
-                key={i}
-                className={`p-4 rounded-lg border-2 ${
-                  platformColors[account.accountType] || 'bg-gray-50 border-gray-200'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">
-                    {platformIcons[account.accountType] || '��'}
-                  </span>
-                  <div>
-                    <p className="font-bold capitalize">{account.accountType}</p>
-                    <p className="text-sm opacity-75">{account.displayName}</p>
+          <>
+            <div className="flex gap-2 mb-4">
+              {['all', 'linkedin', 'facebook', 'instagram', 'tiktok'].map((platform) => (
+                <button
+                  key={platform}
+                  onClick={() => setFilterPlatform(platform)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    filterPlatform === platform
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {platform === 'all' ? 'Tutte' : platform.charAt(0).toUpperCase() + platform.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {filteredAccounts.map((account, index) => (
+                <div
+                  key={`${account.platform}-${account.displayName}-${index}`}
+                  className={`p-4 rounded-lg border-2 ${
+                    platformColors[account.platform] || 'bg-gray-50 border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{platformIcons[account.platform] || '🔗'}</span>
+                    <div>
+                      <p className="font-bold capitalize">{account.platform}</p>
+                      <p className="text-sm opacity-75">{account.displayName}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        account.isActive ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'
+                      }`}
+                    >
+                      {account.isActive ? 'Attivo' : 'Inattivo'}
+                    </span>
+                    {account.profileUrl && (
+                      <a
+                        href={account.profileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-700 hover:text-blue-800"
+                      >
+                        Apri profilo
+                      </a>
+                    )}
                   </div>
                 </div>
-                <div className="mt-2">
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    account.isActive ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'
-                  }`}>
-                    {account.isActive ? 'Attivo' : 'Inattivo'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
-      {/* Filtri */}
-      <div className="flex gap-2">
-        {['all', 'linkedin', 'facebook', 'instagram', 'tiktok'].map((p) => (
-          <button
-            key={p}
-            onClick={() => setFilterPlatform(p)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filterPlatform === p
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            {p === 'all' ? 'Tutte' : p.charAt(0).toUpperCase() + p.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      {/* Info */}
       <div className="card text-center py-12">
         <p className="text-gray-500 text-lg mb-2">Stato pubblicazioni</p>
         <p className="text-gray-400 text-sm">
-          I post approvati nella pagina Approval vengono pubblicati automaticamente tramite Blotato.
+          I contenuti approvati vengono pubblicati tramite il workflow HITL e il backend.
           <br />
-          Le metriche di engagement sono visibili nella pagina Analytics.
+          In questo momento il flusso attivo è text-only, con Facebook come canale abilitato in produzione.
         </p>
       </div>
     </div>

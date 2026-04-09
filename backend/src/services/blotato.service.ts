@@ -26,11 +26,17 @@ export class BlotatoService {
         },
       });
 
-      const accounts = response.data.accounts || [];
+      const accounts = response.data.items || response.data.accounts || [];
 
       // Cache gli account per piattaforma
       for (const account of accounts) {
-        this.accountIds.set(account.type, account);
+        const platformKey = String(account.platform || account.type || '').toLowerCase();
+        if (platformKey) {
+          this.accountIds.set(platformKey, {
+            ...account,
+            type: account.type || account.platform,
+          });
+        }
       }
 
       console.log(`✅ Found ${accounts.length} connected Blotato accounts`);
@@ -75,9 +81,10 @@ export class BlotatoService {
       });
 
       console.log(`✅ LinkedIn post created: ${response.data.id}`);
+      const postId = this.extractPostSubmissionId(response.data);
       return {
         success: true,
-        postId: response.data.id,
+        postId,
       };
     } catch (error: any) {
       console.error('❌ LinkedIn post failed:', error.message);
@@ -122,9 +129,10 @@ export class BlotatoService {
       });
 
       console.log(`✅ Facebook post created: ${response.data.id}`);
+      const postId = this.extractPostSubmissionId(response.data);
       return {
         success: true,
-        postId: response.data.id,
+        postId,
       };
     } catch (error: any) {
       console.error('❌ Facebook post failed:', error.message);
@@ -166,9 +174,10 @@ export class BlotatoService {
       });
 
       console.log(`✅ Instagram post created: ${response.data.id}`);
+      const postId = this.extractPostSubmissionId(response.data);
       return {
         success: true,
-        postId: response.data.id,
+        postId,
       };
     } catch (error: any) {
       console.error('❌ Instagram post failed:', error.message);
@@ -227,6 +236,29 @@ export class BlotatoService {
     };
   }
 
+  async getPostStatus(postSubmissionId: string): Promise<{
+    postSubmissionId: string;
+    status: string;
+    publicUrl?: string;
+    scheduledTime?: string | null;
+    errorMessage?: string;
+  }> {
+    const response = await axios.get(`${this.baseUrl}/posts/${postSubmissionId}`, {
+      headers: {
+        'blotato-api-key': this.apiKey,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    return {
+      postSubmissionId: String(response.data.postSubmissionId || postSubmissionId),
+      status: String(response.data.status || 'unknown'),
+      publicUrl: response.data.publicUrl,
+      scheduledTime: response.data.scheduledTime ?? null,
+      errorMessage: response.data.errorMessage,
+    };
+  }
+
   /**
    * Helper: Fetch prima Facebook page
    */
@@ -241,7 +273,7 @@ export class BlotatoService {
         }
       );
 
-      const pages = response.data.subaccounts || [];
+      const pages = response.data.items || response.data.subaccounts || [];
       if (pages.length === 0) {
         throw new Error('No Facebook pages found');
       }
@@ -251,5 +283,19 @@ export class BlotatoService {
       console.error('❌ Failed to get Facebook pages:', error.message);
       throw error;
     }
+  }
+
+  private extractPostSubmissionId(data: any): string {
+    const postId =
+      data?.postSubmissionId ||
+      data?.id ||
+      data?.post?.postSubmissionId ||
+      data?.post?.id;
+
+    if (!postId) {
+      throw new Error('Blotato did not return a postSubmissionId');
+    }
+
+    return String(postId);
   }
 }

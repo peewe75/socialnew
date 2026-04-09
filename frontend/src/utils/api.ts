@@ -54,6 +54,9 @@ export const n8nAPI = {
 
   health: () =>
     api.get('/n8n/health'),
+
+  config: () =>
+    api.get('/n8n/config'),
 };
 
 // Publishing API
@@ -132,6 +135,9 @@ export const analyticsAPI = {
 
   getDashboard: () =>
     api.get('/analytics/dashboard'),
+
+  sync: () =>
+    api.post('/analytics/sync'),
 
   test: () =>
     api.get('/analytics/test'),

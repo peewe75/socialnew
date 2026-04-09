@@ -22,11 +22,12 @@ model NewsItem {
   link            String   @db.VarChar(2000)
   publishedAt     DateTime
   collectedAt     DateTime @default(now())
-  
+
   // Relations
-  posts           Post[]
-  approvalQueues  ApprovalQueue[]
-  
+  posts             Post[]
+  approvalQueues    ApprovalQueue[]
+  approvalRequests  ApprovalRequest[]
+
   @@index([collectedAt])
   @@index([source])
   @@map("news_items")
@@ -40,49 +41,53 @@ model Post {
   id              String   @id @default(cuid())
   newsItemId      String
   newsItem        NewsItem @relation(fields: [newsItemId], references: [id], onDelete: Cascade)
-  
+
+  approvalRequestId String?
+  approvalRequest   ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+
   // Content per piattaforma
   linkedinContent     String?  @db.Text
   facebookContent     String?  @db.Text
   instagramContent    String?  @db.Text
   tiktokContent       String?  @db.Text
   blogContent         String?  @db.Text
-  
+
   // Hashtags (stored as JSON array)
   linkedinHashtags    String[] @default([])
   facebookHashtags    String[] @default([])
   instagramHashtags   String[] @default([])
   tiktokHashtags      String[] @default([])
-  
+
   // Media URLs
   linkedinMediaUrls   String[] @default([])
   facebookMediaUrls   String[] @default([])
   instagramMediaUrls  String[] @default([])
   tiktokMediaUrls     String[] @default([])
   blogImageUrl        String?  @db.VarChar(2000)
-  
+
   // Status workflow
   status              PostStatus @default(GENERATED)
-  
+
   // Approval
   approvedAt          DateTime?
   approvedBy          String?   @db.VarChar(100)
   rejectionReason     String?   @db.Text
   editedContent       Json?     // Tracks what user edited
-  
+
   // Scheduling
   scheduledFor        DateTime?
   publishedAt         DateTime?
-  
+
   // Relations
   blotatoTracking     BlotatoTracking[]
   analytics           Analytics[]
-  
+
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
-  
+
   @@index([status])
   @@index([newsItemId])
+  @@index([approvalRequestId])
   @@index([publishedAt])
   @@index([scheduledFor])
   @@map("posts")
@@ -167,24 +172,65 @@ model ApprovalQueue {
   id              String   @id @default(cuid())
   newsItemId      String
   newsItem        NewsItem @relation(fields: [newsItemId], references: [id], onDelete: Cascade)
-  
+
   // Webhook info
   webhookPayload  Json
   webhookSentAt   DateTime
   webhookStatus   String   @db.VarChar(50)  // 'pending', 'received', 'failed'
   webhookRetries  Int      @default(0)
-  
+
   // Approval response
   approvalResponse Json?
   approvedAt      DateTime?
   approvalDelay   Int?     // milliseconds from sent to approval
-  
+
   createdAt       DateTime @default(now())
   expiresAt       DateTime // Auto-cleanup after 7 days
-  
+
   @@index([webhookStatus])
   @@index([expiresAt])
   @@map("approval_queue")
+}
+
+// ============================================================================
+// APPROVAL REQUESTS (Dashboard-based approval)
+// ============================================================================
+
+model ApprovalRequest {
+  id              String   @id @default(cuid())
+  newsItemId      String
+  newsItem        NewsItem @relation(fields: [newsItemId], references: [id], onDelete: Cascade)
+
+  title           String   @db.VarChar(500)
+  summary         String   @db.Text
+  source          String?  @db.VarChar(200)
+  link            String?  @db.VarChar(2000)
+
+  // Generated content for all platforms
+  generatedPosts  Json     // Array of { platform, content, hashtags, mediaUrls }
+  imageUrl        String?  @db.VarChar(2000)
+
+  // One-time resume URL for n8n approval callback
+  resumeUrl       String   @db.Text
+
+  // Approval status
+  status          String   @db.VarChar(50) @default("pending")  // 'pending', 'approved', 'rejected'
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  approvedBy      String?  @db.VarChar(100)
+  rejectionReason String?  @db.Text
+
+  // Relations
+  posts           Post[]
+
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime // Auto-cleanup after 7 days
+
+  @@index([status])
+  @@index([newsItemId])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@map("approval_requests")
 }
 
 // ============================================================================

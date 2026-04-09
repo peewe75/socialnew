@@ -180,6 +180,21 @@ export const checkHealth = async (req: Request, res: Response) => {
 export const getConfig = async (req: Request, res: Response) => {
   try {
     const health = await n8nService.healthCheck();
+    const allowedPlatforms = (process.env.PUBLISH_ALLOWED_PLATFORMS || 'linkedin,facebook,instagram')
+      .split(',')
+      .map((platform) => platform.trim().toLowerCase())
+      .filter(Boolean);
+    const blotatoConfigured = !!process.env.BLOTATO_API_KEY && process.env.BLOTATO_API_KEY !== 'demo';
+    const avatarHygenConfigured =
+      !!process.env.AVATAR_HYGEN_API_KEY && process.env.AVATAR_HYGEN_API_KEY !== 'demo';
+    const aiConfigured = !!process.env.AI_API_KEY;
+    const aiProvider = process.env.AI_PROVIDER || 'openrouter';
+    const aiModel = process.env.AI_MODEL || 'qwen/qwen3.6-plus:free';
+    const newsCollectionModel = process.env.NEWS_COLLECTION_MODEL || 'perplexity/sonar';
+    const publishingMode =
+      allowedPlatforms.length === 1 && allowedPlatforms[0] === 'facebook'
+        ? 'facebook-text-only'
+        : 'multi-platform-text-only';
 
     res.json({
       success: true,
@@ -187,13 +202,30 @@ export const getConfig = async (req: Request, res: Response) => {
         webhookUrl: process.env.N8N_WEBHOOK_URL ? '***configured***' : 'using default',
         webhookSecretSet: !!process.env.WEBHOOK_SECRET,
         n8nReachable: health.reachable,
+        integrations: {
+          ai: {
+            configured: aiConfigured,
+            provider: aiProvider,
+            model: aiModel,
+            newsCollectionModel,
+          },
+          blotato: {
+            configured: blotatoConfigured,
+            allowedPlatforms,
+          },
+          avatarHygen: {
+            configured: avatarHygenConfigured,
+          },
+        },
       },
       workflow: {
         name: 'News to Social - HITL Cloud',
         id: 'DEPkXOOGUb0qfLDK',
         trigger: 'POST /webhook/b049384f-16fc-4d77-a883-364e66280ec1',
-        platforms: ['instagram', 'facebook', 'twitter', 'linkedin', 'reddit', 'tiktok'],
-        features: ['AI Content Generation', 'HITL Approval', 'Slack/Email Notifications', 'Multi-Platform Publishing'],
+        platforms: allowedPlatforms,
+        publishingMode,
+        textOnly: true,
+        features: ['AI Content Generation', 'HITL Approval', 'Slack/Email Notifications', 'Backend Publishing'],
       },
     });
   } catch (error: any) {

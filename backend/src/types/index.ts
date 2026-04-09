@@ -35,6 +35,12 @@ export interface ApprovalRequest {
   }>;
   scheduleTime?: string;
   platforms?: string[];
+  generatedPosts?: Array<{
+    platform: string;
+    content: string;
+    hashtags?: string[];
+    mediaUrls?: string[];
+  }>;
 }
 
 export interface BlotatoAccount {

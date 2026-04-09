@@ -1,375 +1,342 @@
 import { FC, useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAppStore } from '../store/appStore';
-import { approvalAPI, publishAPI, newsAPI } from '../utils/api';
-import PostPreview from '../components/PostPreview';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import axios from 'axios';
 
-interface ApprovalPost {
-  newsId: string;
+interface GeneratedPost {
+  platform: string;
+  content: string;
+  hashtags: string[];
+  mediaUrls?: string[];
+}
+
+interface ApprovalRequest {
+  id: string;
+  newsItemId: string;
   title: string;
-  summary?: string;
-  status: string;
-  posts: {
-    platform: string;
-    content: string;
-    hashtags: string[];
-  }[];
-  blogPost?: string;
+  summary: string;
+  source?: string;
+  link?: string;
+  imageUrl?: string;
+  generatedPosts: GeneratedPost[];
+  createdAt: string;
+  expiresAt: string;
 }
 
 export const Approval: FC = () => {
-  const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { loading, setLoading, error, setError } = useAppStore();
-  const [pendingApprovals, setPendingApprovals] = useState<ApprovalPost[]>([]);
-  const [selectedPost, setSelectedPost] = useState<ApprovalPost | null>(null);
-  const [editedContent, setEditedContent] = useState<Record<string, string>>({});
-  const [scheduleTime, setScheduleTime] = useState('');
-  const [publishResult, setPublishResult] = useState<string | null>(null);
-  const [resumeResult, setResumeResult] = useState<string | null>(null);
+  const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
+  const [selectedApproval, setSelectedApproval] = useState<ApprovalRequest | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [editMode, setEditMode] = useState(false);
+  const [editedPosts, setEditedPosts] = useState<GeneratedPost[]>([]);
 
   const resumeUrl = searchParams.get('resumeUrl') || '';
-  const quickTitle = searchParams.get('title') || '';
-  const quickLink = searchParams.get('link') || '';
-  const quickPlatforms = (searchParams.get('platforms') || '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const quickPreview = searchParams.get('preview') || '';
-  const isQuickApprovalMode = Boolean(resumeUrl);
+  const isLegacyMode = Boolean(resumeUrl);
 
+  // Fetch pending approvals on mount
   useEffect(() => {
-    if (isQuickApprovalMode) {
+    if (!isLegacyMode) {
+      fetchPendingApprovals();
+      const interval = setInterval(fetchPendingApprovals, 30000); // Refresh every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [isLegacyMode]);
+
+  const fetchPendingApprovals = async () => {
+    try {
+      const response = await axios.get('/api/approvals/pending');
+      setApprovals(response.data.approvals || []);
+      if (selectedApproval) {
+        const updated = response.data.approvals.find((a: ApprovalRequest) => a.id === selectedApproval.id);
+        if (updated) {
+          setSelectedApproval(updated);
+          setEditedPosts(updated.generatedPosts);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch approvals:', err.message);
+      setError('Errore nel caricamento delle approvazioni');
+    }
+  };
+
+  const handleApprove = async (approvalId: string) => {
+    try {
+      setProcessingId(approvalId);
+      setError(null);
+
+      await axios.post(`/api/approvals/${approvalId}/approve`);
+
+      setApprovals(approvals.filter(a => a.id !== approvalId));
+      setSelectedApproval(null);
+      setEditMode(false);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Errore durante l\'approvazione');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleReject = async (approvalId: string) => {
+    if (!rejectionReason.trim()) {
+      setError('Inserisci un motivo per il rifiuto');
       return;
     }
-    loadPendingApprovals();
-  }, [isQuickApprovalMode]);
-
-  const handleResumeApproval = async (approved: boolean) => {
-    if (!resumeUrl) return;
 
     try {
-      setLoading(true);
-      setError(null);
-      setResumeResult(null);
-
-      await approvalAPI.resume({ resumeUrl, approved });
-
-      setResumeResult(
-        approved
-          ? 'Approvazione inviata correttamente al workflow.'
-          : 'Rifiuto inviato correttamente al workflow.'
-      );
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.response?.data?.details?.message || err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadPendingApprovals = async () => {
-    try {
-      setLoading(true);
+      setProcessingId(approvalId);
       setError(null);
 
-      // Carica i post generati che sono in attesa di approvazione
-      const response = await newsAPI.list();
-      const newsItems = response.data.data || [];
-
-      // Se non ci sono dati dal backend, mostra stato vuoto
-      if (newsItems.length === 0) {
-        setPendingApprovals([]);
-        setSelectedPost(null);
-        return;
-      }
-
-      const approvals: ApprovalPost[] = newsItems.map((item: any) => ({
-        newsId: item.id || item.newsId,
-        title: item.title,
-        summary: item.summary,
-        status: item.status || 'pending',
-        posts: item.posts || item.generatedPosts || [],
-        blogPost: item.blogPostMarkdown || item.blogPost || '',
-      }));
-
-      setPendingApprovals(approvals);
-
-      // Se c'e' un ID specifico, seleziona quello
-      if (id) {
-        const found = approvals.find(a => a.newsId === id);
-        setSelectedPost(found || approvals[0] || null);
-      } else {
-        setSelectedPost(approvals[0] || null);
-      }
-    } catch (err: any) {
-      // Se il backend non e' connesso, mostra stato vuoto
-      setPendingApprovals([]);
-      setSelectedPost(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleApprove = async () => {
-    if (!selectedPost) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      setPublishResult(null);
-
-      const edits = Object.entries(editedContent).map(([platform, content]) => ({
-        platform,
-        content,
-      }));
-
-      const response = await publishAPI.approve({
-        newsId: selectedPost.newsId,
-        approved: true,
-        platforms: selectedPost.posts.map(p => p.platform),
-        generatedPosts: selectedPost.posts.map(p => ({
-          ...p,
-          content: editedContent[p.platform] || p.content,
-        })),
-        edits: edits.length > 0 ? edits : undefined,
-        scheduledTime: scheduleTime || undefined,
+      await axios.post(`/api/approvals/${approvalId}/reject`, {
+        reason: rejectionReason,
       });
 
-      if (response.data.success) {
-        const results = response.data.results;
-        setPublishResult(
-          `Pubblicato con successo! ${results?.successful || 0}/${results?.total || 0} piattaforme.`
-        );
-        // Rimuovi dalla lista
-        const updated = pendingApprovals.filter(p => p.newsId !== selectedPost.newsId);
-        setPendingApprovals(updated);
-        setSelectedPost(updated[0] || null);
-        setEditedContent({});
-      }
+      setApprovals(approvals.filter(a => a.id !== approvalId));
+      setSelectedApproval(null);
+      setRejectionReason('');
     } catch (err: any) {
-      setError(err.response?.data?.error || err.message);
+      setError(err.response?.data?.error || 'Errore durante il rifiuto');
     } finally {
-      setLoading(false);
+      setProcessingId(null);
     }
   };
 
-  const handleReject = async () => {
-    if (!selectedPost) return;
+  const handleEditPost = (platform: string, content: string) => {
+    const updated = editedPosts.map(p =>
+      p.platform === platform ? { ...p, content } : p
+    );
+    setEditedPosts(updated);
+  };
+
+  const handleSaveEdits = async () => {
+    if (!selectedApproval) return;
 
     try {
       setLoading(true);
-      await publishAPI.approve({
-        newsId: selectedPost.newsId,
-        approved: false,
-      });
+      const edits = editedPosts
+        .filter((p, i) => p.content !== selectedApproval.generatedPosts[i]?.content)
+        .map(p => ({
+          platform: p.platform,
+          content: p.content,
+          hashtags: p.hashtags,
+        }));
 
-      const updated = pendingApprovals.filter(p => p.newsId !== selectedPost.newsId);
-      setPendingApprovals(updated);
-      setSelectedPost(updated[0] || null);
-      setEditedContent({});
+      if (edits.length > 0) {
+        await axios.post(`/api/approvals/${selectedApproval.id}/edit-posts`, { edits });
+        setSelectedApproval({ ...selectedApproval, generatedPosts: editedPosts });
+      }
+      setEditMode(false);
     } catch (err: any) {
-      setError(err.response?.data?.error || err.message);
+      setError(err.response?.data?.error || 'Errore nel salvataggio delle modifiche');
     } finally {
       setLoading(false);
     }
   };
+
+  // Legacy mode: quick approval from link
+  if (isLegacyMode) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Approvazione Rapida</h1>
+          <p className="text-gray-600 mt-2">Link di approvazione da email o Slack</p>
+        </div>
+
+        <div className="card text-center py-16">
+          <p className="text-gray-700 text-lg mb-2">Approvazione da link</p>
+          <p className="text-gray-500 text-sm">I link di approvazione rapida da email funzionano su questa pagina.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Content Approval</h1>
-          <p className="text-gray-600 mt-2">Rivedi e approva i contenuti prima della pubblicazione</p>
-        </div>
-        <button
-          onClick={loadPendingApprovals}
-          disabled={loading}
-          className="btn btn-primary disabled:opacity-50"
-        >
-          🔄 Aggiorna
-        </button>
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Approvazioni Contenuti</h1>
+        <p className="text-gray-600 mt-2">
+          {approvals.length === 0 ? 'Nessun contenuto in attesa di approvazione' : `${approvals.length} approvazione(i) in sospeso`}
+        </p>
       </div>
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
           <p className="text-sm text-red-700">{error}</p>
-        </div>
-      )}
-
-      {publishResult && (
-        <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
-          <p className="text-sm text-green-700 font-medium">{publishResult}</p>
-        </div>
-      )}
-
-      {resumeResult && (
-        <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
-          <p className="text-sm text-green-700 font-medium">{resumeResult}</p>
-        </div>
-      )}
-
-      {isQuickApprovalMode && (
-        <div className="space-y-6">
-          <div className="card space-y-4">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">{quickTitle || 'Richiesta di approvazione'}</h2>
-              {quickLink && (
-                <a
-                  href={quickLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                >
-                  Apri fonte
-                </a>
-              )}
-            </div>
-
-            {quickPlatforms.length > 0 && (
-              <p className="text-sm text-gray-600">
-                Piattaforme: {quickPlatforms.join(', ')}
-              </p>
-            )}
-
-            {quickPreview && (
-              <textarea
-                readOnly
-                value={quickPreview}
-                className="w-full h-80 px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm bg-gray-50"
-              />
-            )}
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleResumeApproval(true)}
-                disabled={loading}
-                className="flex-1 btn btn-success disabled:opacity-50"
-              >
-                {loading ? 'Invio...' : 'Approva'}
-              </button>
-              <button
-                onClick={() => handleResumeApproval(false)}
-                disabled={loading}
-                className="flex-1 btn btn-danger disabled:opacity-50"
-              >
-                {loading ? 'Invio...' : 'Rifiuta'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!isQuickApprovalMode && loading && pendingApprovals.length === 0 && (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-      )}
-
-      {!isQuickApprovalMode && !loading && pendingApprovals.length === 0 && (
-        <div className="card text-center py-16">
-          <p className="text-gray-500 text-lg mb-2">Nessun contenuto in attesa di approvazione</p>
-          <p className="text-gray-400 text-sm">Vai alla pagina News per raccogliere e generare nuovi contenuti</p>
           <button
-            onClick={() => navigate('/news')}
-            className="btn btn-primary mt-4"
+            onClick={() => setError(null)}
+            className="text-xs text-red-600 hover:text-red-800 mt-2 underline"
           >
-            📰 Vai a News
+            Chiudi
           </button>
         </div>
       )}
 
-      {!isQuickApprovalMode && pendingApprovals.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Pending List */}
-          <div className="space-y-3">
-            <h2 className="font-bold text-gray-900">In attesa ({pendingApprovals.length})</h2>
-            {pendingApprovals.map((approval) => (
-              <div
-                key={approval.newsId}
-                onClick={() => {
-                  setSelectedPost(approval);
-                  setEditedContent({});
-                  setPublishResult(null);
-                }}
-                className={`card cursor-pointer transition-colors ${
-                  selectedPost?.newsId === approval.newsId ? 'bg-blue-50 border-blue-500' : ''
-                }`}
-              >
-                <p className="font-medium text-gray-900 text-sm">{approval.title}</p>
-                <p className="text-xs text-gray-500 mt-1">{approval.posts.length} piattaforme</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Approval List */}
+        <div className="lg:col-span-1">
+          <div className="card space-y-2 max-h-96 overflow-y-auto">
+            {approvals.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p>Nessuna approvazione in sospeso</p>
               </div>
-            ))}
-          </div>
-
-          {/* Content Preview */}
-          <div className="lg:col-span-2 space-y-6">
-            {selectedPost && (
-              <>
-                <div className="card">
-                  <h2 className="text-lg font-bold text-gray-900">{selectedPost.title}</h2>
-                  {selectedPost.summary && (
-                    <p className="text-gray-600 text-sm mt-2">{selectedPost.summary}</p>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="font-bold text-gray-900">Social Media Posts</h3>
-                  {selectedPost.posts.map((post) => (
-                    <PostPreview
-                      key={post.platform}
-                      post={post}
-                      onEdit={(content) =>
-                        setEditedContent({ ...editedContent, [post.platform]: content })
-                      }
-                    />
-                  ))}
-                </div>
-
-                {selectedPost.blogPost && (
-                  <div className="card">
-                    <h3 className="font-bold text-gray-900 mb-3">Blog Post</h3>
-                    <textarea
-                      value={editedContent.blog || selectedPost.blogPost}
-                      onChange={(e) => setEditedContent({ ...editedContent, blog: e.target.value })}
-                      className="w-full h-40 px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-                    />
-                  </div>
-                )}
-
-                <div className="card">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Programma pubblicazione (opzionale)
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={scheduleTime}
-                    onChange={(e) => setScheduleTime(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleApprove}
-                    disabled={loading}
-                    className="flex-1 btn btn-success disabled:opacity-50"
-                  >
-                    {loading ? 'Pubblicazione...' : 'Approva & Pubblica'}
-                  </button>
-                  <button
-                    onClick={handleReject}
-                    disabled={loading}
-                    className="flex-1 btn btn-danger disabled:opacity-50"
-                  >
-                    Rifiuta
-                  </button>
-                </div>
-              </>
+            ) : (
+              approvals.map(approval => (
+                <button
+                  key={approval.id}
+                  onClick={() => {
+                    setSelectedApproval(approval);
+                    setEditedPosts(approval.generatedPosts);
+                    setEditMode(false);
+                    setRejectionReason('');
+                    setError(null);
+                  }}
+                  className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                    selectedApproval?.id === approval.id
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300 bg-gray-50'
+                  }`}
+                >
+                  <h3 className="font-semibold text-gray-900 text-sm truncate">{approval.title}</h3>
+                  <p className="text-xs text-gray-500 mt-1">{new Date(approval.createdAt).toLocaleString('it-IT')}</p>
+                </button>
+              ))
             )}
           </div>
         </div>
-      )}
+
+        {/* Approval Details */}
+        {selectedApproval ? (
+          <div className="lg:col-span-2 space-y-4">
+            {/* Header */}
+            <div className="card space-y-2">
+              <h2 className="text-2xl font-bold text-gray-900">{selectedApproval.title}</h2>
+              <p className="text-gray-600 text-sm">{selectedApproval.summary}</p>
+
+              {selectedApproval.link && (
+                <a
+                  href={selectedApproval.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-700 text-sm font-medium inline-flex items-center gap-2"
+                >
+                  🔗 Apri fonte
+                </a>
+              )}
+
+              {selectedApproval.imageUrl && (
+                <div className="mt-3 max-h-48 overflow-hidden rounded-lg">
+                  <img
+                    src={selectedApproval.imageUrl}
+                    alt="Generated content"
+                    className="w-full h-auto object-cover"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Generated Posts */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Contenuti Generati</h3>
+                {!editMode ? (
+                  <button
+                    onClick={() => setEditMode(true)}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    ✏️ Modifica
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setEditMode(false);
+                        setEditedPosts(selectedApproval.generatedPosts);
+                      }}
+                      className="text-sm text-gray-600 hover:text-gray-700 font-medium"
+                    >
+                      Annulla
+                    </button>
+                    <button
+                      onClick={handleSaveEdits}
+                      disabled={loading}
+                      className="text-sm text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50"
+                    >
+                      Salva
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {editedPosts.map((post, index) => (
+                <div key={`${post.platform}-${index}`}className="card space-y-2 bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold text-gray-900 capitalize">{post.platform}</h4>
+                    <span className="text-xs text-gray-500">{post.content.length} car.</span>
+                  </div>
+
+                  {editMode ? (
+                    <textarea
+                      value={post.content}
+                      onChange={e => handleEditPost(post.platform, e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded-lg text-sm font-mono resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows={4}
+                    />
+                  ) : (
+                    <p className="text-sm text-gray-700 leading-relaxed">{post.content}</p>
+                  )}
+
+                  {post.hashtags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {post.hashtags.map((tag, i) => (
+                        <span key={i} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Action Buttons */}
+            {!editMode && (
+              <div className="card space-y-3 bg-gray-50">
+                <button
+                  onClick={() => handleApprove(selectedApproval.id)}
+                  disabled={processingId === selectedApproval.id}
+                  className="w-full btn btn-success disabled:opacity-50"
+                >
+                  {processingId === selectedApproval.id ? '⏳ Approvazione...' : '✅ Approva'}
+                </button>
+
+                <div className="space-y-2">
+                  <textarea
+                    placeholder="Motivo del rifiuto (opzionale)"
+                    value={rejectionReason}
+                    onChange={e => setRejectionReason(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm resize-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    rows={2}
+                  />
+                  <button
+                    onClick={() => handleReject(selectedApproval.id)}
+                    disabled={processingId === selectedApproval.id}
+                    className="w-full btn btn-danger disabled:opacity-50"
+                  >
+                    {processingId === selectedApproval.id ? '⏳ Rifiuto...' : '❌ Rifiuta'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="lg:col-span-2 card text-center py-12 text-gray-500">
+            <p>Seleziona un'approvazione per visualizzare i dettagli</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

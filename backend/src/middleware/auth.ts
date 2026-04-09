@@ -11,9 +11,9 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
   const clerkSecretKey = process.env.CLERK_SECRET_KEY;
   const webhookSecret = process.env.WEBHOOK_SECRET;
 
-  // Approval resume links are intentionally handled server-side to avoid
-  // Slack/Gmail link scanners consuming n8n's one-time resume URL.
-  if (req.path === '/approval/resume' && req.method === 'POST') {
+  // Approval resume: GET shows confirmation page, POST forwards to n8n.
+  // Both bypass Clerk — GET is safe (HTML only), POST does the real work.
+  if (req.path === '/approval/resume' && (req.method === 'GET' || req.method === 'POST')) {
     return next();
   }
 

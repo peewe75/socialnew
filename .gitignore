@@ -42,3 +42,4 @@ n8n_data/
 # Media uploads
 backend/public/media/
 .vercel
+.env*.local

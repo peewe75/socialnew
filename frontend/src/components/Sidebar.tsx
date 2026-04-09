@@ -6,7 +6,6 @@ import { isClerkEnabled } from '../config/runtime';
 const menuItems = [
   { icon: '📊', label: 'Dashboard', path: '/' },
   { icon: '📰', label: 'News', path: '/news' },
-  { icon: '✍️', label: 'Approval', path: '/approve' },
   { icon: '🚀', label: 'Publishing', path: '/publishing' },
   { icon: '📈', label: 'Analytics', path: '/analytics' },
   { icon: '⚙️', label: 'Settings', path: '/settings' },

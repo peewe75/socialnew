@@ -2,8 +2,8 @@ import { Request, Response } from 'express';
 import { AvatarHygenService, VideoGenerationRequest } from '../services/avatarHygen.service';
 import { MediaHandlerService } from '../services/mediaHandler.service';
 
-const avatarService = new AvatarHygenService();
-const mediaService = new MediaHandlerService();
+const createAvatarService = () => new AvatarHygenService();
+const createMediaService = () => new MediaHandlerService();
 
 /**
  * GET /api/avatar/avatars
@@ -11,6 +11,7 @@ const mediaService = new MediaHandlerService();
  */
 export const listAvatars = async (req: Request, res: Response) => {
   try {
+    const avatarService = createAvatarService();
     console.log(`\n👤 AVATAR LISTING`);
 
     const avatars = await avatarService.listAvatars();
@@ -32,6 +33,7 @@ export const listAvatars = async (req: Request, res: Response) => {
  */
 export const listVoices = async (req: Request, res: Response) => {
   try {
+    const avatarService = createAvatarService();
     console.log(`\n🎙️  VOICES LISTING`);
 
     const voices = await avatarService.listVoices();
@@ -53,6 +55,7 @@ export const listVoices = async (req: Request, res: Response) => {
  */
 export const generateVideo = async (req: Request, res: Response) => {
   try {
+    const avatarService = createAvatarService();
     const {
       script,
       voiceText,
@@ -97,11 +100,13 @@ export const generateVideo = async (req: Request, res: Response) => {
       console.log(`✅ Video generation started`);
     }
 
+    const localUrl = 'localUrl' in result ? result.localUrl : undefined;
+
     res.json({
       success: true,
       videoId: result.videoId,
       status: result.status,
-      localUrl: result.localUrl,
+      localUrl,
       newsTitle,
       timestamp: new Date().toISOString(),
       downloadVideo,
@@ -118,6 +123,7 @@ export const generateVideo = async (req: Request, res: Response) => {
  */
 export const getVideoStatus = async (req: Request, res: Response) => {
   try {
+    const avatarService = createAvatarService();
     const { videoId } = req.params;
 
     console.log(`\n🔍 Checking video status: ${videoId}`);
@@ -144,6 +150,7 @@ export const getVideoStatus = async (req: Request, res: Response) => {
  */
 export const downloadGeneratedVideo = async (req: Request, res: Response) => {
   try {
+    const avatarService = createAvatarService();
     const { videoId } = req.params;
     const { videoUrl } = req.body;
 
@@ -173,6 +180,8 @@ export const downloadGeneratedVideo = async (req: Request, res: Response) => {
  */
 export const generateVideoFromNews = async (req: Request, res: Response) => {
   try {
+    const avatarService = createAvatarService();
+    const mediaService = createMediaService();
     const {
       newsTitle,
       newsContent,
@@ -240,6 +249,7 @@ export const generateVideoFromNews = async (req: Request, res: Response) => {
  */
 export const testAvatarGeneration = async (req: Request, res: Response) => {
   try {
+    const avatarService = createAvatarService();
     console.log(`\n🧪 AVATAR GENERATION TEST`);
 
     // Step 1: Fetch avatars e voices

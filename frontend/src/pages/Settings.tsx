@@ -1,12 +1,37 @@
-import { FC, useState, useEffect } from 'react';
-import { n8nAPI } from '../utils/api';
+import { FC, useEffect, useMemo, useState } from 'react';
+import { getPreferredAppOrigin } from '../config/runtime';
+import { n8nAPI, publishAPI } from '../utils/api';
 
-interface SettingsConfig {
-  aiProvider: string;
-  defaultTopics: string;
-  autoApprove: boolean;
-  n8nUrl: string;
-  blotatoConnected: boolean;
+interface N8NConfigResponse {
+  config: {
+    webhookUrl: string;
+    webhookSecretSet: boolean;
+    n8nReachable: boolean;
+    integrations?: {
+      ai?: {
+        configured: boolean;
+        provider?: string;
+        model?: string;
+        newsCollectionModel?: string;
+      };
+      blotato?: {
+        configured: boolean;
+        allowedPlatforms?: string[];
+      };
+      avatarHygen?: {
+        configured: boolean;
+      };
+    };
+  };
+  workflow: {
+    name: string;
+    id: string;
+    trigger: string;
+    platforms: string[];
+    publishingMode?: string;
+    textOnly?: boolean;
+    features: string[];
+  };
 }
 
 interface N8NStatus {
@@ -15,140 +40,138 @@ interface N8NStatus {
   error?: string;
 }
 
+interface ConnectedAccount {
+  accountType?: string;
+  platform?: string;
+  type?: string;
+  displayName?: string;
+  name?: string;
+  isActive?: boolean;
+  active?: boolean;
+}
+
+function statusBadge(connected: boolean, labelWhenTrue: string, labelWhenFalse: string) {
+  return connected ? (
+    <span className="badge bg-green-100 text-green-800">{labelWhenTrue}</span>
+  ) : (
+    <span className="badge bg-yellow-100 text-yellow-800">{labelWhenFalse}</span>
+  );
+}
+
 export const Settings: FC = () => {
-  const apiBaseUrl =
-    import.meta.env.VITE_API_URL ||
-    (import.meta.env.PROD
-      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/api`
-      : 'http://localhost:3001/api');
-  const [config, setConfig] = useState<SettingsConfig>({
-    aiProvider: 'openrouter',
-    defaultTopics: 'tech, AI, innovation',
-    autoApprove: false,
-    n8nUrl: import.meta.env.VITE_N8N_URL || 'https://sbmbcs.app.n8n.cloud',
-    blotatoConnected: false,
-  });
-  const [saved, setSaved] = useState(false);
+  const apiBaseUrl = `${getPreferredAppOrigin()}/api`;
   const [n8nStatus, setN8NStatus] = useState<N8NStatus>({ reachable: false, loading: true });
+  const [config, setConfig] = useState<N8NConfigResponse | null>(null);
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    checkN8NHealth();
-  }, []);
-
-  const checkN8NHealth = async () => {
-    setN8NStatus(prev => ({ ...prev, loading: true }));
+  const loadStatus = async () => {
+    setN8NStatus((prev) => ({ ...prev, loading: true }));
     try {
-      const res = await n8nAPI.health();
-      setN8NStatus({ reachable: res.data.n8n?.reachable ?? false, loading: false });
-    } catch {
-      setN8NStatus({ reachable: false, loading: false, error: 'Backend non raggiungibile' });
+      const [healthRes, configRes, accountsRes] = await Promise.all([
+        n8nAPI.health(),
+        n8nAPI.config(),
+        publishAPI.getAccounts(),
+      ]);
+
+      setN8NStatus({ reachable: healthRes.data.n8n?.reachable ?? false, loading: false });
+      setConfig(configRes.data);
+      setAccounts(accountsRes.data.accounts || []);
+    } catch (error: any) {
+      setN8NStatus({
+        reachable: false,
+        loading: false,
+        error: error.response?.data?.error || 'Backend non raggiungibile',
+      });
     }
   };
 
-  const handleSave = () => {
-    // I settings verranno salvati nel backend quando connesso
+  useEffect(() => {
+    loadStatus();
+  }, []);
+
+  const activeAccounts = useMemo(
+    () => accounts.filter((account) => (account.isActive ?? account.active ?? true)),
+    [accounts]
+  );
+  const blotatoConnected = activeAccounts.length > 0;
+  const aiConfigured = Boolean(config?.config.integrations?.ai?.configured);
+  const avatarConfigured = Boolean(config?.config.integrations?.avatarHygen?.configured);
+  const publishingMode = config?.workflow.publishingMode || 'unknown';
+  const publishingLabel =
+    publishingMode === 'facebook-text-only'
+      ? 'Pubblicazione attiva (solo Facebook, text-only via backend)'
+      : publishingMode === 'multi-platform-text-only'
+      ? 'Pubblicazione attiva (text-only via backend)'
+      : 'Pubblicazione da verificare';
+
+  const handleSave = async () => {
+    await loadStatus();
     setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    window.setTimeout(() => setSaved(false), 3000);
   };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600 mt-2">Configura il sistema di automazione</p>
+        <p className="text-gray-600 mt-2">Verifica stato reale del sistema e delle integrazioni.</p>
       </div>
 
       {saved && (
-        <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
-          <p className="text-sm text-green-700 font-medium">Impostazioni salvate con successo!</p>
+        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-lg">
+          <p className="text-sm text-blue-700 font-medium">
+            Stato aggiornato dal backend con successo.
+          </p>
         </div>
       )}
 
-      {/* AI Provider */}
-      <div className="card">
-        <h2 className="text-lg font-bold text-gray-900 mb-4">AI Provider</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Provider</label>
-            <select
-              value={config.aiProvider}
-              onChange={(e) => setConfig({ ...config, aiProvider: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="openrouter">OpenRouter (Multi-model)</option>
-              <option value="openai">OpenAI (GPT-4)</option>
-              <option value="anthropic">Anthropic (Claude)</option>
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Le API keys vanno configurate nelle variabili d'ambiente del backend (.env)
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Content Defaults */}
-      <div className="card">
-        <h2 className="text-lg font-bold text-gray-900 mb-4">Contenuti</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Topics predefiniti (separati da virgola)
-            </label>
-            <input
-              type="text"
-              value={config.defaultTopics}
-              onChange={(e) => setConfig({ ...config, defaultTopics: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="autoApprove"
-              checked={config.autoApprove}
-              onChange={(e) => setConfig({ ...config, autoApprove: e.target.checked })}
-              className="w-4 h-4 text-blue-600 rounded"
-            />
-            <label htmlFor="autoApprove" className="text-sm text-gray-700">
-              Approva automaticamente i contenuti generati (salta la fase di approvazione)
-            </label>
-          </div>
-        </div>
-      </div>
-
-      {/* n8n Workflow Automation */}
       <div className="card">
         <h2 className="text-lg font-bold text-gray-900 mb-4">n8n Workflow Automation</h2>
         <div className="flex items-center gap-2 mb-4">
-          <span className={`w-3 h-3 rounded-full ${n8nStatus.loading ? 'bg-yellow-400 animate-pulse' : n8nStatus.reachable ? 'bg-green-500' : 'bg-red-500'}`}></span>
+          <span
+            className={`w-3 h-3 rounded-full ${
+              n8nStatus.loading ? 'bg-yellow-400 animate-pulse' : n8nStatus.reachable ? 'bg-green-500' : 'bg-red-500'
+            }`}
+          ></span>
           <span className="text-sm text-gray-600">
-            {n8nStatus.loading ? 'Verifica connessione...' : n8nStatus.reachable ? 'n8n Cloud connesso' : n8nStatus.error || 'n8n non raggiungibile'}
+            {n8nStatus.loading
+              ? 'Verifica connessione...'
+              : n8nStatus.reachable
+              ? 'n8n Cloud connesso'
+              : n8nStatus.error || 'n8n non raggiungibile'}
           </span>
           {!n8nStatus.loading && (
-            <button onClick={checkN8NHealth} className="text-xs text-blue-600 hover:text-blue-800 ml-2">Ricontrolla</button>
+            <button onClick={loadStatus} className="text-xs text-blue-600 hover:text-blue-800 ml-2">
+              Ricontrolla
+            </button>
           )}
         </div>
+
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">URL n8n Cloud</label>
             <input
               type="text"
-              value={config.n8nUrl}
-              onChange={(e) => setConfig({ ...config, n8nUrl: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="https://sbmbcs.app.n8n.cloud"
+              readOnly
+              value="https://sbmbcs.app.n8n.cloud"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
             />
           </div>
+
           <a
-            href={config.n8nUrl}
+            href="https://sbmbcs.app.n8n.cloud"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 btn btn-primary"
           >
             Apri n8n Dashboard
           </a>
+
           <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="font-medium text-gray-900 mb-2">Workflow attivo: News to Social - HITL Cloud</h3>
+            <h3 className="font-medium text-gray-900 mb-2">
+              Workflow attivo: {config?.workflow.name || 'News to Social - HITL Cloud'}
+            </h3>
             <ul className="space-y-2 text-sm text-gray-700">
               <li className="flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
@@ -167,8 +190,8 @@ export const Settings: FC = () => {
                 HITL Approval (Wait node + app resume)
               </li>
               <li className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
-                Pubblicazione (Upload media disattivato per text-only)
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                {publishingLabel}
               </li>
               <li className="flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
@@ -183,7 +206,6 @@ export const Settings: FC = () => {
         </div>
       </div>
 
-      {/* Integrations */}
       <div className="card">
         <h2 className="text-lg font-bold text-gray-900 mb-4">Integrazioni</h2>
         <div className="space-y-3">
@@ -192,21 +214,30 @@ export const Settings: FC = () => {
               <span className="text-2xl">📡</span>
               <div>
                 <p className="font-medium text-gray-900">Blotato</p>
-                <p className="text-sm text-gray-600">Pubblicazione multi-piattaforma</p>
+                <p className="text-sm text-gray-600">
+                  {blotatoConnected
+                    ? `${activeAccounts.length} account connesso/i`
+                    : 'Pubblicazione multi-piattaforma'}
+                </p>
               </div>
             </div>
-            <span className="badge bg-yellow-100 text-yellow-800">Configura API Key nel .env</span>
+            {statusBadge(blotatoConnected, 'Connesso', 'Configura account in Blotato')}
           </div>
+
           <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">🔍</span>
+              <span className="text-2xl">🔎</span>
               <div>
-                <p className="font-medium text-gray-900">Perplexity</p>
-                <p className="text-sm text-gray-600">Raccolta news in tempo reale</p>
+                <p className="font-medium text-gray-900">Raccolta News AI</p>
+                <p className="text-sm text-gray-600">
+                  {config?.config.integrations?.ai?.provider || 'openrouter'} ·{' '}
+                  {config?.config.integrations?.ai?.newsCollectionModel || 'perplexity/sonar'}
+                </p>
               </div>
             </div>
-            <span className="badge bg-yellow-100 text-yellow-800">Configura API Key nel .env</span>
+            {statusBadge(aiConfigured, 'Configurato', 'Configura AI_API_KEY')}
           </div>
+
           <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
             <div className="flex items-center gap-3">
               <span className="text-2xl">🎬</span>
@@ -215,12 +246,11 @@ export const Settings: FC = () => {
                 <p className="text-sm text-gray-600">Generazione video con avatar AI</p>
               </div>
             </div>
-            <span className="badge bg-yellow-100 text-yellow-800">Configura API Key nel .env</span>
+            {statusBadge(avatarConfigured, 'Configurato', 'Non configurato')}
           </div>
         </div>
       </div>
 
-      {/* Environment Info */}
       <div className="card">
         <h2 className="text-lg font-bold text-gray-900 mb-4">Ambiente</h2>
         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -230,7 +260,7 @@ export const Settings: FC = () => {
           </div>
           <div className="p-3 bg-gray-50 rounded-lg">
             <p className="text-gray-600">n8n URL</p>
-            <p className="font-mono font-medium">{config.n8nUrl}</p>
+            <p className="font-mono font-medium">https://sbmbcs.app.n8n.cloud</p>
           </div>
           <div className="p-3 bg-gray-50 rounded-lg">
             <p className="text-gray-600">Ambiente</p>
@@ -244,8 +274,8 @@ export const Settings: FC = () => {
       </div>
 
       <div className="flex justify-end">
-        <button onClick={handleSave} className="btn btn-primary px-8">
-          Salva Impostazioni
+        <button onClick={handleSave} className="btn btn-secondary px-8">
+          Rileggi stato sistema
         </button>
       </div>
     </div>

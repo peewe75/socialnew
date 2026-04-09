@@ -1,5 +1,4 @@
 import { FC, useEffect, useState } from 'react';
-import { useAppStore } from '../store/appStore';
 import { analyticsAPI } from '../utils/api';
 import {
   XAxis,
@@ -43,6 +42,9 @@ interface AnalyticsData {
   recentPosts: Array<{
     postId: string;
     platform: string;
+    title?: string;
+    status?: string;
+    lastUpdated?: string;
     metrics: PlatformMetrics;
   }>;
 }
@@ -53,12 +55,10 @@ function formatNumber(num: number): string {
 }
 
 export const Analytics: FC = () => {
-  const { loading, setLoading, error, setError } = useAppStore();
   const [data, setData] = useState<AnalyticsData | null>(null);
-
-  useEffect(() => {
-    loadAnalytics();
-  }, []);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadAnalytics = async () => {
     try {
@@ -75,32 +75,58 @@ export const Analytics: FC = () => {
     }
   };
 
+  useEffect(() => {
+    loadAnalytics();
+  }, []);
+
+  const syncAndReload = async () => {
+    try {
+      setSyncing(true);
+      setError(null);
+      await analyticsAPI.sync();
+      await loadAnalytics();
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const platformBreakdown = data?.summary?.platformBreakdown
     ? Object.values(data.summary.platformBreakdown)
     : [];
 
-  const chartData = platformBreakdown.map(p => ({
-    name: p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
-    views: p.views,
-    likes: p.likes,
-    comments: p.comments,
-    shares: p.shares,
-    engagement: Number(p.engagement.toFixed(1)),
+  const chartData = platformBreakdown.map((platform) => ({
+    name: platform.platform.charAt(0).toUpperCase() + platform.platform.slice(1),
+    views: platform.views,
+    likes: platform.likes,
+    comments: platform.comments,
+    shares: platform.shares,
+    engagement: Number(platform.engagement.toFixed(1)),
   }));
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
           <p className="text-gray-600 mt-2">Monitora le performance dei tuoi contenuti</p>
         </div>
-        <button onClick={loadAnalytics} disabled={loading} className="btn btn-primary disabled:opacity-50">
-          🔄 Aggiorna
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={syncAndReload}
+            disabled={loading || syncing}
+            className="btn btn-secondary disabled:opacity-50"
+          >
+            {syncing ? 'Sincronizzazione...' : 'Sincronizza analytics'}
+          </button>
+          <button onClick={loadAnalytics} disabled={loading || syncing} className="btn btn-primary disabled:opacity-50">
+            Aggiorna
+          </button>
+        </div>
       </div>
 
-      {loading && (
+      {loading && !data && (
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
@@ -114,7 +140,6 @@ export const Analytics: FC = () => {
 
       {!loading && !error && data && (
         <>
-          {/* KPI Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="card text-center">
               <p className="text-gray-500 text-sm">Total Views</p>
@@ -134,9 +159,7 @@ export const Analytics: FC = () => {
             </div>
           </div>
 
-          {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Performance per piattaforma */}
             <div className="card">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Performance per Piattaforma</h3>
               {chartData.length > 0 ? (
@@ -157,7 +180,6 @@ export const Analytics: FC = () => {
               )}
             </div>
 
-            {/* Engagement Rate */}
             <div className="card">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Engagement Rate (%)</h3>
               {chartData.length > 0 ? (
@@ -176,7 +198,6 @@ export const Analytics: FC = () => {
             </div>
           </div>
 
-          {/* Trends & Recommendations */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="card">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Trend & Insights</h3>
@@ -189,8 +210,8 @@ export const Analytics: FC = () => {
                   <p className="text-sm text-gray-600">Contenuto migliore</p>
                   <p className="font-bold text-gray-900 capitalize">{data.summary.trends.bestContent}</p>
                 </div>
-                {data.summary.trends.improvementAreas.map((area, i) => (
-                  <div key={i} className="p-3 bg-yellow-50 rounded-lg">
+                {data.summary.trends.improvementAreas.map((area, index) => (
+                  <div key={index} className="p-3 bg-yellow-50 rounded-lg">
                     <p className="text-sm text-yellow-800">{area}</p>
                   </div>
                 ))}
@@ -200,17 +221,16 @@ export const Analytics: FC = () => {
             <div className="card">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Raccomandazioni</h3>
               <div className="space-y-2">
-                {data.optimizations.recommendations.map((rec, i) => (
-                  <div key={i} className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg">
+                {data.optimizations.recommendations.map((recommendation, index) => (
+                  <div key={index} className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg">
                     <span className="text-blue-600 font-bold mt-0.5">💡</span>
-                    <p className="text-sm text-gray-800">{rec}</p>
+                    <p className="text-sm text-gray-800">{recommendation}</p>
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Platform Details */}
           <div className="card">
             <h3 className="text-lg font-bold text-gray-900 mb-4">Dettaglio Piattaforme</h3>
             <div className="overflow-x-auto">
@@ -226,15 +246,15 @@ export const Analytics: FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {platformBreakdown.map((p) => (
-                    <tr key={p.platform} className="border-b border-gray-100">
-                      <td className="py-3 px-4 font-medium capitalize">{p.platform}</td>
-                      <td className="py-3 px-4">{formatNumber(p.views)}</td>
-                      <td className="py-3 px-4">{formatNumber(p.likes)}</td>
-                      <td className="py-3 px-4">{formatNumber(p.comments)}</td>
-                      <td className="py-3 px-4">{formatNumber(p.shares)}</td>
+                  {platformBreakdown.map((platform) => (
+                    <tr key={platform.platform} className="border-b border-gray-100">
+                      <td className="py-3 px-4 font-medium capitalize">{platform.platform}</td>
+                      <td className="py-3 px-4">{formatNumber(platform.views)}</td>
+                      <td className="py-3 px-4">{formatNumber(platform.likes)}</td>
+                      <td className="py-3 px-4">{formatNumber(platform.comments)}</td>
+                      <td className="py-3 px-4">{formatNumber(platform.shares)}</td>
                       <td className="py-3 px-4">
-                        <span className="badge badge-success">{p.engagement.toFixed(1)}%</span>
+                        <span className="badge badge-success">{platform.engagement.toFixed(1)}%</span>
                       </td>
                     </tr>
                   ))}

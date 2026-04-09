@@ -4,6 +4,9 @@ interface RecentActivityProps {
   posts?: Array<{
     postId: string;
     platform: string;
+    title?: string;
+    status?: string;
+    lastUpdated?: string;
     metrics: {
       views: number;
       likes: number;
@@ -12,6 +15,18 @@ interface RecentActivityProps {
     };
   }>;
 }
+
+const getBadgeClass = (status?: string) => {
+  if (status === 'published') return 'badge-success';
+  if (status === 'failed') return 'badge-error';
+  return 'badge-warning';
+};
+
+const getStatusLabel = (status?: string) => {
+  if (status === 'published') return 'Pubblicato';
+  if (status === 'failed') return 'Errore';
+  return 'In sincronizzazione';
+};
 
 const RecentActivity: FC<RecentActivityProps> = ({ posts = [] }) => (
   <div className="card">
@@ -23,14 +38,19 @@ const RecentActivity: FC<RecentActivityProps> = ({ posts = [] }) => (
         posts.map((post, i) => (
           <div key={post.postId || i} className="flex justify-between items-center p-3 border-b border-gray-200">
             <div>
-              <p className="text-gray-900 capitalize">
-                Post pubblicato su {post.platform}
+              <p className="text-gray-900 capitalize font-medium">
+                {post.title || `Post su ${post.platform}`}
               </p>
               <p className="text-xs text-gray-500">
-                {post.metrics.views} views - {post.metrics.likes} likes - {post.metrics.comments} comments
+                {post.platform} - {post.metrics.views} views - {post.metrics.likes} likes - {post.metrics.comments} comments
               </p>
+              {post.lastUpdated && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Ultimo sync: {new Date(post.lastUpdated).toLocaleString('it-IT')}
+                </p>
+              )}
             </div>
-            <span className="badge badge-success text-xs">Pubblicato</span>
+            <span className={`badge text-xs ${getBadgeClass(post.status)}`}>{getStatusLabel(post.status)}</span>
           </div>
         ))
       )}

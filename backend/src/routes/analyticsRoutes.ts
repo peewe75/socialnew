@@ -6,6 +6,7 @@ import {
   comparePeriods,
   getOptimizations,
   getDashboard,
+  syncAnalytics,
   testAnalytics,
 } from '../controllers/analyticsController';
 
@@ -28,6 +29,9 @@ router.post('/optimizations', getOptimizations);
 
 // Dashboard completo
 router.get('/dashboard', getDashboard);
+
+// Sync manuale
+router.post('/sync', syncAnalytics);
 
 // Test
 router.get('/test', testAnalytics);

@@ -7,7 +7,7 @@ export interface PostMetrics {
   comments: number;
   shares: number;
   clicks?: number;
-  engagement: number; // (likes + comments + shares) / views * 100
+  engagement: number;
   reach?: number;
   impressions?: number;
 }
@@ -18,6 +18,9 @@ export interface BlotatoMetrics {
   blotatoPostId: string;
   metrics: PostMetrics;
   collectedAt: Date;
+  status?: string;
+  publishedAt?: Date | null;
+  title?: string;
 }
 
 export interface AnalyticsSummary {
@@ -43,23 +46,19 @@ export class AnalyticsService {
   private blotatoBaseUrl: string;
 
   constructor(
-    blotatoApiKey: string = process.env.BLOTATO_API_KEY!,
+    blotatoApiKey: string = process.env.BLOTATO_API_KEY || '',
     blotatoBaseUrl: string = process.env.BLOTATO_BASE_URL || 'https://backend.blotato.com/v2'
   ) {
     this.blotatoApiKey = blotatoApiKey;
     this.blotatoBaseUrl = blotatoBaseUrl;
   }
 
-  /**
-   * Fetch metriche da Blotato per un singolo post
-   */
   async getPostMetrics(blotatoPostId: string, platform: string): Promise<PostMetrics> {
     try {
-      console.log(`📊 Fetching metrics for ${platform}: ${blotatoPostId}`);
+      console.log(`[analytics] Fetching metrics for ${platform}: ${blotatoPostId}`);
 
-      // Se non hai API key, ritorna mock data
       if (!this.blotatoApiKey || this.blotatoApiKey === 'demo') {
-        return this.getMockMetrics(platform);
+        return this.getEmptyMetrics(platform);
       }
 
       const response = await axios.get(
@@ -72,28 +71,25 @@ export class AnalyticsService {
         }
       );
 
-      const data = response.data;
+      const data = response.data || {};
 
       return {
         platform,
-        views: data.views || 0,
-        likes: data.likes || 0,
-        comments: data.comments || 0,
-        shares: data.shares || 0,
-        clicks: data.clicks || 0,
-        reach: data.reach || 0,
-        impressions: data.impressions || 0,
+        views: Number(data.views || 0),
+        likes: Number(data.likes || 0),
+        comments: Number(data.comments || 0),
+        shares: Number(data.shares || 0),
+        clicks: Number(data.clicks || 0),
+        reach: Number(data.reach || 0),
+        impressions: Number(data.impressions || 0),
         engagement: this.calculateEngagement(data),
       };
     } catch (error: any) {
-      console.error(`❌ Failed to get metrics for ${platform}:`, error.message);
-      return this.getMockMetrics(platform);
+      console.error(`[analytics] Failed to get metrics for ${platform}:`, error.message);
+      return this.getEmptyMetrics(platform);
     }
   }
 
-  /**
-   * Fetch metriche per più post
-   */
   async getMultiplePostsMetrics(
     posts: Array<{
       blotatoPostId: string;
@@ -101,118 +97,83 @@ export class AnalyticsService {
       postId: string;
     }>
   ): Promise<BlotatoMetrics[]> {
-    try {
-      console.log(`📊 Fetching metrics for ${posts.length} posts...`);
+    const results: BlotatoMetrics[] = [];
 
-      const results: BlotatoMetrics[] = [];
+    for (const post of posts) {
+      const metrics = await this.getPostMetrics(post.blotatoPostId, post.platform);
 
-      for (const post of posts) {
-        const metrics = await this.getPostMetrics(post.blotatoPostId, post.platform);
+      results.push({
+        postId: post.postId,
+        platform: post.platform,
+        blotatoPostId: post.blotatoPostId,
+        metrics,
+        collectedAt: new Date(),
+      });
 
-        results.push({
-          postId: post.postId,
-          platform: post.platform,
-          blotatoPostId: post.blotatoPostId,
-          metrics,
-          collectedAt: new Date(),
-        });
-
-        // Evita rate limiting
-        await this.sleep(500);
-      }
-
-      console.log(`✅ Collected metrics for ${results.length} posts`);
-      return results;
-    } catch (error: any) {
-      console.error('❌ Failed to get multiple posts metrics:', error.message);
-      throw error;
+      await this.sleep(250);
     }
+
+    return results;
   }
 
-  /**
-   * Genera summary analytics per un periodo
-   */
   async generateAnalyticsSummary(
     posts: BlotatoMetrics[],
     period: string = 'week'
   ): Promise<AnalyticsSummary> {
-    try {
-      console.log(`\n📈 GENERATING ANALYTICS SUMMARY (${period})`);
+    if (posts.length === 0) {
+      return this.getEmptySummary(period);
+    }
 
-      if (posts.length === 0) {
-        return this.getEmptySummary(period);
+    const totalViews = posts.reduce((sum, post) => sum + post.metrics.views, 0);
+    const totalLikes = posts.reduce((sum, post) => sum + post.metrics.likes, 0);
+    const totalComments = posts.reduce((sum, post) => sum + post.metrics.comments, 0);
+    const totalShares = posts.reduce((sum, post) => sum + post.metrics.shares, 0);
+    const totalEngagement = totalLikes + totalComments + totalShares;
+
+    const platformBreakdown = posts.reduce<Record<string, PostMetrics>>((acc, post) => {
+      if (!acc[post.platform]) {
+        acc[post.platform] = this.getEmptyMetrics(post.platform);
       }
 
-      // Calcola metriche aggregate
-      const totalViews = posts.reduce((sum, p) => sum + p.metrics.views, 0);
-      const totalLikes = posts.reduce((sum, p) => sum + p.metrics.likes, 0);
-      const totalComments = posts.reduce((sum, p) => sum + p.metrics.comments, 0);
-      const totalShares = posts.reduce((sum, p) => sum + p.metrics.shares, 0);
-      const totalEngagement = totalLikes + totalComments + totalShares;
-      const averageEngagement = posts.length > 0
-        ? (totalEngagement / posts.length / totalViews) * 100
+      acc[post.platform].views += post.metrics.views;
+      acc[post.platform].likes += post.metrics.likes;
+      acc[post.platform].comments += post.metrics.comments;
+      acc[post.platform].shares += post.metrics.shares;
+      acc[post.platform].clicks = (acc[post.platform].clicks || 0) + (post.metrics.clicks || 0);
+      acc[post.platform].reach = (acc[post.platform].reach || 0) + (post.metrics.reach || 0);
+      acc[post.platform].impressions =
+        (acc[post.platform].impressions || 0) + (post.metrics.impressions || 0);
+      return acc;
+    }, {});
+
+    for (const metrics of Object.values(platformBreakdown)) {
+      metrics.engagement = metrics.views > 0
+        ? Number((((metrics.likes + metrics.comments + metrics.shares) / metrics.views) * 100).toFixed(2))
         : 0;
-
-      // Breakdown per piattaforma
-      const platformBreakdown: Record<string, PostMetrics> = {};
-      posts.forEach(post => {
-        if (!platformBreakdown[post.platform]) {
-          platformBreakdown[post.platform] = {
-            platform: post.platform,
-            views: 0,
-            likes: 0,
-            comments: 0,
-            shares: 0,
-            engagement: 0,
-          };
-        }
-        platformBreakdown[post.platform].views += post.metrics.views;
-        platformBreakdown[post.platform].likes += post.metrics.likes;
-        platformBreakdown[post.platform].comments += post.metrics.comments;
-        platformBreakdown[post.platform].shares += post.metrics.shares;
-      });
-
-      // Calcola engagement per piattaforma
-      Object.keys(platformBreakdown).forEach(platform => {
-        const p = platformBreakdown[platform];
-        p.engagement = ((p.likes + p.comments + p.shares) / p.views) * 100;
-      });
-
-      // Top platform
-      const topPlatform = Object.entries(platformBreakdown).sort(
-        (a, b) => b[1].views - a[1].views
-      )[0];
-
-      // Trends e recommendations
-      const trends = this.analyzeTrends(posts, platformBreakdown);
-
-      console.log(`   📊 Total Views: ${totalViews}`);
-      console.log(`   👍 Total Engagement: ${totalEngagement}`);
-      console.log(`   🏆 Top Platform: ${topPlatform[0]}`);
-      console.log(`   📈 Avg Engagement: ${averageEngagement.toFixed(2)}%\n`);
-
-      return {
-        period,
-        totalPosts: posts.length,
-        totalViews,
-        totalEngagement,
-        averageEngagement: Math.round(averageEngagement * 100) / 100,
-        topPlatform: {
-          name: topPlatform[0],
-          views: topPlatform[1].views,
-        },
-        platformBreakdown,
-        trends,
-      };
-    } catch (error: any) {
-      console.error('❌ Failed to generate summary:', error.message);
-      throw error;
     }
+
+    const topPlatformEntry = Object.entries(platformBreakdown).sort(
+      (a, b) => b[1].views - a[1].views
+    )[0];
+
+    const averageEngagement = totalViews > 0
+      ? Number(((totalEngagement / totalViews) * 100).toFixed(2))
+      : 0;
+
+    return {
+      period,
+      totalPosts: posts.length,
+      totalViews,
+      totalEngagement,
+      averageEngagement,
+      topPlatform: topPlatformEntry
+        ? { name: topPlatformEntry[0], views: topPlatformEntry[1].views }
+        : { name: 'N/A', views: 0 },
+      platformBreakdown,
+      trends: this.analyzeTrends(posts),
+    };
   }
 
-  /**
-   * Confronta performance tra periodi
-   */
   async comparePeriods(
     currentPeriod: BlotatoMetrics[],
     previousPeriod: BlotatoMetrics[]
@@ -222,156 +183,127 @@ export class AnalyticsService {
       engagement: number;
       likes: number;
     };
-    comparison: Record<string, any>;
+    comparison: Record<string, unknown>;
   }> {
-    try {
-      console.log(`\n📊 COMPARING PERIODS`);
+    const current = await this.generateAnalyticsSummary(currentPeriod, 'current');
+    const previous = await this.generateAnalyticsSummary(previousPeriod, 'previous');
 
-      const current = await this.generateAnalyticsSummary(currentPeriod, 'current');
-      const previous = await this.generateAnalyticsSummary(previousPeriod, 'previous');
-
-      const viewsGrowth = ((current.totalViews - previous.totalViews) / previous.totalViews) * 100;
-      const engagementGrowth =
-        ((current.totalEngagement - previous.totalEngagement) / previous.totalEngagement) * 100;
-      const likesGrowth =
-        ((current.totalPosts - previous.totalPosts) / previous.totalPosts) * 100;
-
-      console.log(`   📈 Views Growth: ${viewsGrowth.toFixed(2)}%`);
-      console.log(`   👍 Engagement Growth: ${engagementGrowth.toFixed(2)}%`);
-      console.log(`   📝 Posts Growth: ${likesGrowth.toFixed(2)}%\n`);
-
-      return {
-        growth: {
-          views: Math.round(viewsGrowth * 100) / 100,
-          engagement: Math.round(engagementGrowth * 100) / 100,
-          likes: Math.round(likesGrowth * 100) / 100,
-        },
-        comparison: {
-          current,
-          previous,
-        },
-      };
-    } catch (error: any) {
-      console.error('❌ Failed to compare periods:', error.message);
-      throw error;
-    }
+    return {
+      growth: {
+        views: this.calculateGrowth(current.totalViews, previous.totalViews),
+        engagement: this.calculateGrowth(current.totalEngagement, previous.totalEngagement),
+        likes: this.calculateGrowth(current.totalPosts, previous.totalPosts),
+      },
+      comparison: {
+        current,
+        previous,
+      },
+    };
   }
 
-  /**
-   * Ottimizzazioni per il prossimo post
-   */
   async getOptimizations(posts: BlotatoMetrics[]): Promise<{
     bestTime: string;
     bestStyle: string;
     recommendations: string[];
     contentTypes: Record<string, number>;
   }> {
-    try {
-      console.log(`\n🔍 ANALYZING OPTIMIZATIONS`);
-
-      if (posts.length === 0) {
-        return {
-          bestTime: '14:00',
-          bestStyle: 'professional',
-          recommendations: [
-            'Raccogli più dati prima di fare raccomandazioni',
-            'Testa diversi orari di pubblicazione',
-            'Varia gli stili di contenuto',
-          ],
-          contentTypes: {},
-        };
-      }
-
-      // Simula analisi di orari
-      const times = {
-        morning: Math.floor(Math.random() * 500) + 100,
-        afternoon: Math.floor(Math.random() * 800) + 200,
-        evening: Math.floor(Math.random() * 600) + 150,
-      };
-
-      const bestTimeEntry = Object.entries(times).sort((a, b) => b[1] - a[1])[0];
-      const bestTime = bestTimeEntry[0] === 'morning' ? '09:00' : bestTimeEntry[0] === 'afternoon' ? '14:00' : '19:00';
-
-      // Raccomandazioni
-      const recommendations: string[] = [];
-
-      const avgEngagement = posts.reduce((sum, p) => sum + p.metrics.engagement, 0) / posts.length;
-
-      if (avgEngagement < 2) {
-        recommendations.push('Aumenta l\'engagement con domande dirette e call-to-action');
-      }
-      if (avgEngagement > 5) {
-        recommendations.push('Mantieni lo stile attuale, sta funzionando bene!');
-      }
-
-      recommendations.push('Testa video format per aumentare engagement');
-      recommendations.push('Usa hashtag più specifici e rilevanti');
-      recommendations.push('Interagisci con i commenti entro 1 ora dalla pubblicazione');
-
-      const contentTypes = {
-        'video': Math.floor(Math.random() * 5),
-        'image': Math.floor(Math.random() * 8),
-        'text': Math.floor(Math.random() * 4),
-        'carousel': Math.floor(Math.random() * 3),
-      };
-
-      console.log(`   ⏰ Best Time: ${bestTime}`);
-      console.log(`   📚 Recommendations: ${recommendations.length}`);
-
+    if (posts.length === 0) {
       return {
-        bestTime,
+        bestTime: '14:00',
         bestStyle: 'engaging',
-        recommendations,
-        contentTypes,
+        recommendations: [
+          'Pubblica piu contenuti per sbloccare suggerimenti basati sui dati reali.',
+          'Mantieni un solo canale attivo finche il flusso di pubblicazione non e stabile.',
+          'Raccogli almeno 3-5 publish reali prima di confrontare le performance.',
+        ],
+        contentTypes: {},
       };
-    } catch (error: any) {
-      console.error('❌ Failed to get optimizations:', error.message);
-      throw error;
     }
+
+    const platforms = posts.reduce<Record<string, number>>((acc, post) => {
+      acc[post.platform] = (acc[post.platform] || 0) + 1;
+      return acc;
+    }, {});
+
+    const topPerformer = [...posts].sort((a, b) => b.metrics.engagement - a.metrics.engagement)[0];
+    const recommendations: string[] = [];
+
+    if (topPerformer) {
+      recommendations.push(
+        `Il canale migliore al momento e ${topPerformer.platform} con engagement ${topPerformer.metrics.engagement.toFixed(1)}%.`
+      );
+    }
+
+    if (posts.every((post) => post.metrics.views === 0)) {
+      recommendations.push('Blotato non ha ancora restituito metriche di engagement: controlla piu tardi o sincronizza di nuovo.');
+    } else {
+      recommendations.push('Continua a monitorare i post pubblicati per aggiornare la dashboard con metriche reali.');
+    }
+
+    recommendations.push('Usa Facebook come canale primario finche non colleghi anche gli altri account social.');
+
+    return {
+      bestTime: '14:00',
+      bestStyle: topPerformer?.metrics.engagement && topPerformer.metrics.engagement >= 2 ? 'engaging' : 'informative',
+      recommendations,
+      contentTypes: platforms,
+    };
   }
 
-  /**
-   * Helper: Calculate engagement rate
-   */
+  getEmptyMetrics(platform: string): PostMetrics {
+    return {
+      platform,
+      views: 0,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      clicks: 0,
+      reach: 0,
+      impressions: 0,
+      engagement: 0,
+    };
+  }
+
   private calculateEngagement(data: any): number {
-    const likes = data.likes || 0;
-    const comments = data.comments || 0;
-    const shares = data.shares || 0;
-    const views = data.views || 1;
+    const likes = Number(data.likes || 0);
+    const comments = Number(data.comments || 0);
+    const shares = Number(data.shares || 0);
+    const views = Number(data.views || 0);
 
-    return ((likes + comments + shares) / views) * 100;
+    if (views <= 0) {
+      return 0;
+    }
+
+    return Number((((likes + comments + shares) / views) * 100).toFixed(2));
   }
 
-  /**
-   * Helper: Analyze trends
-   */
   private analyzeTrends(
-    posts: BlotatoMetrics[],
-    platformBreakdown: Record<string, PostMetrics>
+    posts: BlotatoMetrics[]
   ): { bestTime: string; bestContent: string; improvementAreas: string[] } {
+    if (posts.length === 0) {
+      return {
+        bestTime: 'N/A',
+        bestContent: 'N/A',
+        improvementAreas: ['Pubblica altri contenuti per ottenere insight affidabili.'],
+      };
+    }
+
+    const topPost = [...posts].sort((a, b) => b.metrics.engagement - a.metrics.engagement)[0];
+    const weakPosts = posts.filter((post) => post.metrics.views === 0);
     const improvementAreas: string[] = [];
 
-    // Analizza cosa funziona
-    const topPost = posts.sort((a, b) => b.metrics.views - a.metrics.views)[0];
-    const bottomPost = posts.sort((a, b) => a.metrics.views - b.metrics.views)[0];
-
-    if (topPost && bottomPost) {
+    if (topPost) {
       improvementAreas.push(
-        `I post su ${topPost.platform} hanno ${topPost.metrics.engagement.toFixed(1)}% engagement - mantieni questo stile!`
-      );
-      improvementAreas.push(
-        `Riduci frequenza di posting su ${bottomPost.platform} (engagement: ${bottomPost.metrics.engagement.toFixed(1)}%)`
+        `Replica il tono del post migliore su ${topPost.platform}${topPost.title ? `: "${topPost.title}"` : ''}.`
       );
     }
 
-    const avgEngagement = posts.reduce((sum, p) => sum + p.metrics.engagement, 0) / posts.length;
-    if (avgEngagement < 2) {
-      improvementAreas.push('Aumenta engagement con call-to-action più forti');
+    if (weakPosts.length > 0) {
+      improvementAreas.push('Alcuni post non hanno ancora metriche disponibili da Blotato: attendi il prossimo sync prima di confrontarli.');
     }
 
     if (improvementAreas.length === 0) {
-      improvementAreas.push('Mantieni la strategia attuale, sta funzionando bene');
-      improvementAreas.push('Testa nuovi format una volta a settimana');
+      improvementAreas.push('Il flusso e stabile: continua a pubblicare per arricchire lo storico analytics.');
     }
 
     return {
@@ -381,28 +313,6 @@ export class AnalyticsService {
     };
   }
 
-  /**
-   * Helper: Mock metrics
-   */
-  private getMockMetrics(platform: string): PostMetrics {
-    const baseEngagement = Math.random() * 8;
-
-    return {
-      platform,
-      views: Math.floor(Math.random() * 5000) + 100,
-      likes: Math.floor(Math.random() * 500) + 20,
-      comments: Math.floor(Math.random() * 100) + 5,
-      shares: Math.floor(Math.random() * 50) + 2,
-      clicks: Math.floor(Math.random() * 200) + 10,
-      reach: Math.floor(Math.random() * 8000) + 100,
-      impressions: Math.floor(Math.random() * 10000) + 500,
-      engagement: Number(baseEngagement.toFixed(2)),
-    };
-  }
-
-  /**
-   * Helper: Empty summary
-   */
   private getEmptySummary(period: string): AnalyticsSummary {
     return {
       period,
@@ -415,15 +325,20 @@ export class AnalyticsService {
       trends: {
         bestTime: 'N/A',
         bestContent: 'N/A',
-        improvementAreas: ['Pubblica più post per ottenere insights'],
+        improvementAreas: ['Pubblica il primo contenuto per iniziare a raccogliere metriche reali.'],
       },
     };
   }
 
-  /**
-   * Helper: Sleep
-   */
+  private calculateGrowth(current: number, previous: number): number {
+    if (previous === 0) {
+      return current > 0 ? 100 : 0;
+    }
+
+    return Number((((current - previous) / previous) * 100).toFixed(2));
+  }
+
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

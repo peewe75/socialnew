@@ -1,14 +1,13 @@
 import { Request, Response } from 'express';
 import { MediaHandlerService, MediaGenerationRequest } from '../services/mediaHandler.service';
 
-const mediaService = new MediaHandlerService();
-
 /**
  * POST /api/media/generate-image
  * Genera immagine per un post
  */
 export const generateImage = async (req: Request, res: Response) => {
   try {
+    const mediaService = new MediaHandlerService();
     const { newsTitle, newsContent, style, platform } = req.body;
 
     if (!newsTitle || !newsContent) {
@@ -50,6 +49,7 @@ export const generateImage = async (req: Request, res: Response) => {
  */
 export const generateVideoScript = async (req: Request, res: Response) => {
   try {
+    const mediaService = new MediaHandlerService();
     const { newsTitle, newsContent, style } = req.body;
 
     if (!newsTitle || !newsContent) {
@@ -90,6 +90,7 @@ export const generateVideoScript = async (req: Request, res: Response) => {
  */
 export const uploadMediaToBlotato = async (req: Request, res: Response) => {
   try {
+    const mediaService = new MediaHandlerService();
     const { mediaUrl, filename } = req.body;
 
     if (!mediaUrl || !filename) {
@@ -120,6 +121,7 @@ export const uploadMediaToBlotato = async (req: Request, res: Response) => {
  */
 export const testGeneration = async (req: Request, res: Response) => {
   try {
+    const mediaService = new MediaHandlerService();
     console.log(`\n🧪 MEDIA GENERATION TEST`);
 
     const testRequest: MediaGenerationRequest = {

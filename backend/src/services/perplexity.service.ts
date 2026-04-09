@@ -3,12 +3,13 @@ import { NewsItem } from '../types';
 
 export class PerplexityService {
   private apiKey: string;
-  private baseUrl = 'https://api.perplexity.ai';
+  private baseUrl = 'https://openrouter.ai/api/v1';
+  private model = process.env.NEWS_COLLECTION_MODEL || 'perplexity/sonar';
 
-  constructor(apiKey: string = process.env.PERPLEXITY_API_KEY!) {
+  constructor(apiKey: string = process.env.AI_API_KEY!) {
     this.apiKey = apiKey;
     if (!this.apiKey) {
-      throw new Error('PERPLEXITY_API_KEY not configured');
+      throw new Error('AI_API_KEY not configured for OpenRouter news collection');
     }
   }
 
@@ -44,7 +45,7 @@ Esempio:
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model: 'pplx-7b-online',
+          model: this.model,
           messages: [
             {
               role: 'user',
@@ -59,6 +60,8 @@ Esempio:
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://news-to-social.app',
+            'X-Title': 'News to Social Automation',
           },
           timeout: 30000,
         }
