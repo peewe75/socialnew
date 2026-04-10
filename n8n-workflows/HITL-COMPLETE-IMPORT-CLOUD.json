@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "News to Social - HITL Cloud",
   "nodes": [
     {
@@ -7,22 +7,28 @@
         "path": "b049384f-16fc-4d77-a883-364e66280ec1",
         "options": {}
       },
-      "id": "a1000000-0000-0000-0000-000000000001",
+      "id": "11a47d12-2b8e-4431-ba38-361182ded4c3",
       "name": "ðŸ“¨ Webhook - Ricevi News",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [100, 300],
+      "position": [
+        -3696,
+        1072
+      ],
       "webhookId": "b049384f-16fc-4d77-a883-364e66280ec1"
     },
     {
       "parameters": {
         "jsCode": "const b = $input.first().json.body || $input.first().json;\nif (!b.title) throw new Error('Payload mancante: campo title obbligatorio');\nreturn {\n  newsId: b.newsId || b.id || ('news_' + Date.now()),\n  title: b.title,\n  summary: b.content || b.summary || '',\n  source: b.source || 'Unknown',\n  link: b.url || b.link || '',\n  date: b.date || new Date().toISOString(),\n  timestamp: b.timestamp || new Date().toISOString()\n};"
       },
-      "id": "a1000000-0000-0000-0000-000000000002",
+      "id": "dcb18a4c-ddd9-4c9a-bf9e-a557cda883b7",
       "name": "ðŸ—‚ï¸ Estrai e Valida Dati",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [360, 300]
+      "position": [
+        -3472,
+        1072
+      ]
     },
     {
       "parameters": {
@@ -31,95 +37,205 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Secret", "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA"
+            }
           ]
         },
         "sendBody": true,
-        "contentType": "json",
-        "body": "={{ JSON.stringify({ newsItems: [{ id: $json.newsId, title: $json.title, summary: $json.summary, source: $json.source, link: $json.link, date: $json.date }] }) }}",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=newsItems",
+              "value": "={{ JSON.stringify({\n  newsItems: [\n    {\n      id: $json.newsId,\n      title: $json.title,\n      summary: $json.summary,\n      source: $json.source,\n      link: $json.link,\n      date: $json.date\n    }\n  ]\n}) }}"
+            }
+          ]
+        },
         "options": {}
       },
-      "id": "a1000000-0000-0000-0000-000000000003",
+      "id": "836f9f34-6bf8-4a17-ad4b-4c3582aefed5",
       "name": "ðŸ“ Genera Contenuti (AI)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [620, 300]
+      "position": [
+        -3248,
+        1072
+      ],
+      "disabled": true
     },
     {
       "parameters": {
-        "jsCode": "const res = $input.first().json;\nif (!res.success) throw new Error('Generazione fallita: ' + JSON.stringify(res));\nconst item = res.data && res.data[0];\nif (!item) throw new Error('Nessun dato generato');\nconst payload = item.payload || {};\nconst posts = payload.generatedPosts || [];\nconst preview = posts\n  .map(p => p.platform.toUpperCase() + '\\n' + p.content + '\\n' + (p.hashtags || []).join(' '))\n  .join('\\n\\n---\\n\\n');\nreturn {\n  newsId: item.newsId || payload.newsId,\n  title: payload.title,\n  summary: payload.summary,\n  source: payload.source,\n  link: payload.link,\n  generatedPosts: posts,\n  blogPost: payload.blogPostMarkdown || '',\n  formattedPreview: preview,\n  postCount: posts.length,\n  platforms: posts.map(p => p.platform)\n};"
+        "jsCode": "// Input dal nodo OpenAI\nconst raw = $input.first().json;\n\n// Metadati dalla fase di estrazione (upstream)\nconst estrai = $('ðŸ—‚ï¸ Estrai e Valida Dati').first().json;\n\n// Parsing risposta AI\nlet parsed;\ntry {\n  const content = raw.message?.content\n    || raw.choices?.[0]?.message?.content\n    || raw.output?.[0]?.content?.[0]?.text\n    || JSON.stringify(raw);\n  parsed = JSON.parse(content);\n} catch (e) {\n  throw new Error('OpenAI non ha restituito JSON valido: ' + String(\n    raw.message?.content || raw.output?.[0]?.content?.[0]?.text || raw\n  ).substring(0, 300));\n}\n\nconst platforms = ['linkedin', 'facebook', 'instagram', 'tiktok'];\nconst generatedPosts = platforms.map(platform => ({\n  platform,\n  content: parsed[platform]?.content || '',\n  hashtags: parsed[platform]?.hashtags || [],\n}));\n\nconst preview = generatedPosts\n  .map(p => p.platform.toUpperCase() + '\\n' + p.content + '\\n' + p.hashtags.join(' '))\n  .join('\\n\\n---\\n\\n');\n\nreturn {\n  newsId: estrai.newsId || parsed.newsId || '',\n  title: estrai.title || parsed.title || '',\n  summary: estrai.summary || parsed.summary || '',\n  source: estrai.source || parsed.source || '',\n  link: estrai.link || parsed.link || '',\n  generatedPosts,\n  blogPost: '',\n  formattedPreview: preview,\n  postCount: generatedPosts.length,\n  platforms: generatedPosts.map(p => p.platform),\n    imagePrompt: parsed.imagePrompt || '',\n};"
       },
-      "id": "a1000000-0000-0000-0000-000000000004",
+      "id": "d70ce18e-0f3e-4e71-acd3-ccd55869d250",
       "name": "ðŸ“‹ Formatta per Review",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [880, 300]
+      "position": [
+        -2672,
+        976
+      ]
     },
     {
       "parameters": {
-        "text": "ðŸ”” *Nuovo Contenuto in Attesa di Approvazione*\n\nðŸ“° *News:* {{ $json.title }}\nðŸ”— *Fonte:* {{ $json.link }}\nðŸ“± *Piattaforme:* {{ $json.platforms.join(', ') }}\nðŸ“ *Post generati:* {{ $json.postCount }}\n\nâœ… *APPROVA:* {{ $execution.resumeUrl }}?approved=true\nâŒ *RIFIUTA:* {{ $execution.resumeUrl }}?approved=false\n\n_In attesa di approvazione umana..._",
-        "channel": "#pending-approvals",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AR2U3NWDQ",
+          "mode": "list",
+          "cachedResultName": "social"
+        },
+        "text": "={{ `Nuovo contenuto in attesa di approvazione\\n\\nNews: ${$json.title}\\nFonte: ${$json.link}\\nPiattaforme: ${$json.platforms.join(', ')}\\nPost generati: ${$json.postCount}\\n\\nAPPROVA: https://news-to-social.vercel.app/api/approval/resume?resumeUrl=${encodeURIComponent($execution.resumeUrl)}&approved=true\\nRIFIUTA: https://news-to-social.vercel.app/api/approval/resume?resumeUrl=${encodeURIComponent($execution.resumeUrl)}&approved=false` }}\n",
         "otherOptions": {}
       },
-      "id": "a1000000-0000-0000-0000-000000000005",
+      "id": "6ff55900-4365-412e-aeeb-ff3a867c2412",
       "name": "ðŸ’¬ Slack - Pending Approval",
       "type": "n8n-nodes-base.slack",
       "typeVersion": 2.3,
-      "position": [1140, 160]
+      "position": [
+        -2240,
+        784
+      ],
+      "webhookId": "f4887bdd-448e-47b9-80a2-dfb25957145a",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "QdO3z2Gt7JKdF405",
+          "name": "Slack account"
+        }
+      },
+      "disabled": true
     },
     {
       "parameters": {
-        "fromEmail": "noreply@news-to-social.com",
+        "fromEmail": "peewe75@gmail.com",
         "toEmail": "peewe75@gmail.com",
-        "subject": "â³ Contenuto in Attesa di Approvazione",
-        "emailType": "text",
-        "message": "Nuovo contenuto AI generato â€” in attesa della tua approvazione.\n\nNEWS: {{ $json.title }}\nFONTE: {{ $json.link }}\nPIATTAFORME: {{ $json.platforms.join(', ') }}\n\nâœ… APPROVA: {{ $execution.resumeUrl }}?approved=true\nâŒ RIFIUTA: {{ $execution.resumeUrl }}?approved=false\n\n---\nANTEPRIMA CONTENUTI:\n{{ $json.formattedPreview }}",
+        "subject": "=={{ `Contenuto in attesa di approvazione - ${$json.title}` }}\n",
+        "emailFormat": "text",
+        "text": "={{ `Nuovo contenuto AI generato.\\n\\nNews: ${$json.title}\\nFonte: ${$json.link}\\nPiattaforme: ${$json.platforms.join(', ')}\\nPost generati: ${$json.postCount}\\n\\nAPPROVA: https://news-to-social.vercel.app/api/approval/resume?resumeUrl=${encodeURIComponent($execution.resumeUrl)}&approved=true\\nRIFIUTA: https://news-to-social.vercel.app/api/approval/resume?resumeUrl=${encodeURIComponent($execution.resumeUrl)}&approved=false\\n\\nAnteprima:\\n${$json.formattedPreview}` }}\n",
         "options": {}
       },
-      "id": "a1000000-0000-0000-0000-000000000006",
+      "id": "b3b66b5b-ef5d-4869-a4be-7a4478da02d2",
       "name": "ðŸ“§ Email - Richiesta Approvazione",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [1140, 440]
+      "position": [
+        -2240,
+        1168
+      ],
+      "webhookId": "5af49a46-0cdc-4cff-96c0-bc4d35b4ca09",
+      "credentials": {
+        "smtp": {
+          "id": "2jJd8S1FCTcjeAZW",
+          "name": "SMTP account"
+        }
+      },
+      "disabled": true
     },
     {
       "parameters": {
         "resume": "webhook",
         "options": {}
       },
-      "id": "a1000000-0000-0000-0000-000000000007",
+      "id": "18fb22f6-e6d7-4d52-b2a0-d9637c71c480",
       "name": "â³ Attendi Approvazione (HITL)",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [1400, 300],
+      "position": [
+        -2240,
+        976
+      ],
       "webhookId": "c0ffee00-1234-5678-abcd-000000000007"
     },
     {
       "parameters": {
         "conditions": {
           "options": {
-            "caseSensitive": false,
+            "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "loose"
+            "typeValidation": "strict",
+            "version": 2
           },
           "conditions": [
             {
               "id": "cond-approval",
               "leftValue": "={{ String($json.query?.approved ?? $json.body?.approved ?? $json.approved ?? 'false') }}",
               "rightValue": "true",
-              "operator": { "type": "string", "operation": "equals" }
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
         },
         "options": {}
       },
-      "id": "a1000000-0000-0000-0000-000000000008",
+      "id": "33367a83-fe0c-4322-a2e7-0f4e29dec8d7",
       "name": "âœ… Approvato?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1660, 300]
+      "position": [
+        -2016,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AR2U3NWDQ",
+          "mode": "list",
+          "cachedResultName": "social"
+        },
+        "text": "={{ `✅ *Post Pubblicati con Successo!*\\n\\n📰 *News:* ${$('ðŸ“‹ Formatta per Review').item.json.title || 'N/A'}\\n📱 *Piattaforme:* ${$('ðŸ“‹ Formatta per Review').item.json.platforms.join(', ')}\\n\\n📊 *Risultati:*\\n• Post generati: ${$('ðŸ“‹ Formatta per Review').item.json.postCount}\\n• Link: ${$('ðŸ“‹ Formatta per Review').item.json.link || 'N/A'}\\n\\n⏰ ${$now.format('dd/MM/yyyy HH:mm')}` }}",
+        "otherOptions": {}
+      },
+      "id": "bbac4386-43de-4722-9dbd-30a9d9ffecbd",
+      "name": "ðŸ’¬ Slack - Pubblicato âœ…",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        -1568,
+        688
+      ],
+      "webhookId": "18d05c4a-1e86-4ed7-af09-002322279ea8",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "QdO3z2Gt7JKdF405",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "peewe75@gmail.com",
+        "toEmail": "peewe75@gmail.com",
+        "subject": "âœ… Post Pubblicati",
+        "options": {}
+      },
+      "id": "6c190dd4-c8c1-4ae5-8eee-52b91e1c6923",
+      "name": "ðŸ“§ Email - Pubblicato âœ…",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -1568,
+        880
+      ],
+      "webhookId": "818e853f-ef71-4a23-b125-c3b4d0769664",
+      "credentials": {
+        "smtp": {
+          "id": "2jJd8S1FCTcjeAZW",
+          "name": "SMTP account"
+        }
+      }
     },
     {
       "parameters": {
@@ -128,92 +244,74 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Secret", "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
-        "contentType": "json",
-        "body": "={{ JSON.stringify({ newsId: $('ðŸ“‹ Formatta per Review').item.json.newsId, approved: true, platforms: $('ðŸ“‹ Formatta per Review').item.json.platforms, generatedPosts: $('ðŸ“‹ Formatta per Review').item.json.generatedPosts, scheduledTime: $json.query?.scheduledTime || $json.body?.scheduledTime || null }) }}",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ approved: true, newsId: $('ðŸ“‹ Formatta per Review').first().json.newsId, title: $('ðŸ“‹ Formatta per Review').first().json.title, summary: $('ðŸ“‹ Formatta per Review').first().json.summary, source: $('ðŸ“‹ Formatta per Review').first().json.source, link: $('ðŸ“‹ Formatta per Review').first().json.link, generatedPosts: $('ðŸ“‹ Formatta per Review').first().json.generatedPosts }) }}",
         "options": {}
       },
-      "id": "a1000000-0000-0000-0000-000000000009",
-      "name": "ðŸš€ Pubblica su Blotato",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.3,
-      "position": [1920, 160]
-    },
-    {
-      "parameters": {
-        "text": "âœ… *Post Pubblicati con Successo!*\n\nðŸ“° *News:* {{ $('ðŸ“‹ Formatta per Review').item.json.title }}\nðŸ“± *Piattaforme:* {{ $json.results?.results?.map(r => r.platform).join(', ') || 'N/A' }}\n\nðŸ“Š *Risultati:*\nâ€¢ Successi: {{ $json.results?.successful || 0 }}\nâ€¢ Falliti: {{ $json.results?.failed || 0 }}\n\nâ° {{ $now.format('DD/MM/YYYY HH:mm') }}",
-        "channel": "#published",
-        "otherOptions": {}
-      },
-      "id": "a1000000-0000-0000-0000-000000000010",
-      "name": "ðŸ’¬ Slack - Pubblicato âœ…",
-      "type": "n8n-nodes-base.slack",
-      "typeVersion": 2.3,
-      "position": [2180, 80]
-    },
-    {
-      "parameters": {
-        "fromEmail": "noreply@news-to-social.com",
-        "toEmail": "peewe75@gmail.com",
-        "subject": "âœ… Post Pubblicati",
-        "emailType": "text",
-        "message": "I tuoi contenuti sono stati pubblicati!\n\nNEWS: {{ $('ðŸ“‹ Formatta per Review').item.json.title }}\nPIATTAFORME: {{ $json.results?.results?.map(r => r.platform).join(', ') }}\nSUCCESSI: {{ $json.results?.successful }}\nFALLITI: {{ $json.results?.failed }}\nDATA: {{ $now.toISO() }}",
-        "options": {}
-      },
-      "id": "a1000000-0000-0000-0000-000000000011",
-      "name": "ðŸ“§ Email - Pubblicato âœ…",
-      "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2.1,
-      "position": [2180, 240]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://news-to-social.vercel.app/api/n8n/callback/published",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
-          ]
-        },
-        "sendBody": true,
-        "contentType": "json",
-        "body": "={{ JSON.stringify({ newsId: $('ðŸ“‹ Formatta per Review').item.json.newsId, status: 'published', successful: $json.results?.successful, failed: $json.results?.failed, publishedAt: $now.toISO() }) }}",
-        "options": {}
-      },
-      "id": "a1000000-0000-0000-0000-000000000012",
+      "id": "53a779ec-7952-4a16-828b-fada3f7dbd31",
       "name": "ðŸ“¡ Callback Backend - Pubblicato",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [2180, 400]
+      "position": [
+        -1568,
+        1072
+      ]
     },
     {
       "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AR2U3NWDQ",
+          "mode": "list",
+          "cachedResultName": "social"
+        },
         "text": "âŒ *Contenuto Rifiutato*\n\nðŸ“° *News:* {{ $('ðŸ“‹ Formatta per Review').item.json.title }}\nðŸ• *Rifiutato:* {{ $now.format('DD/MM/YYYY HH:mm') }}\nðŸ“ *Motivo:* {{ $json.query?.reason || $json.body?.reason || 'Non specificato' }}",
-        "channel": "#rejected",
         "otherOptions": {}
       },
-      "id": "a1000000-0000-0000-0000-000000000013",
+      "id": "00734592-6a53-4c1d-97a3-f2070496c577",
       "name": "ðŸ’¬ Slack - Rifiutato âŒ",
       "type": "n8n-nodes-base.slack",
       "typeVersion": 2.3,
-      "position": [1920, 440]
+      "position": [
+        -1792,
+        1072
+      ],
+      "webhookId": "7f4dd0c6-9e51-4a50-b1ce-235cce1b10d7",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "QdO3z2Gt7JKdF405",
+          "name": "Slack account"
+        }
+      }
     },
     {
       "parameters": {
         "rule": {
-          "interval": [{ "field": "hours", "hoursInterval": 6 }]
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
         }
       },
-      "id": "b2000000-0000-0000-0000-000000000001",
+      "id": "358ed33f-58af-4e23-844e-5607ba2301f3",
       "name": "â° Schedule - Ogni 6 Ore",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [100, 700]
+      "position": [
+        -3696,
+        1392
+      ]
     },
     {
       "parameters": {
@@ -222,48 +320,199 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Secret", "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA"
+            }
           ]
         },
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "topics", "value": "technology, artificial intelligence, innovation, startups, business" },
-            { "name": "limit", "value": "3" }
+            {
+              "name": "topics",
+              "value": "technology, artificial intelligence, innovation, startups, business"
+            },
+            {
+              "name": "limit",
+              "value": "3"
+            }
           ]
         },
         "options": {}
       },
-      "id": "b2000000-0000-0000-0000-000000000002",
+      "id": "3618377c-2295-4b3c-abb6-22925f941ec8",
       "name": "ðŸ“° Raccogli News e Avvia Pipeline",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [360, 700]
+      "position": [
+        -3472,
+        1392
+      ]
     },
     {
       "parameters": {
-        "text": "ðŸ“° *Raccolta News Completata*\n\nâœ… Raccolte: {{ $json.collected || 0 }}\nðŸ“¨ Inviate a n8n: {{ $json.sent || 0 }}\nâŒ Fallite: {{ $json.failed || 0 }}\nâ° {{ $now.format('DD/MM/YYYY HH:mm') }}\n\n_Contenuti in fase di generazione e approvazione..._",
-        "channel": "#automation",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AR2U3NWDQ",
+          "mode": "list",
+          "cachedResultName": "social"
+        },
+        "text": "={{ `📡 *Raccolta News Completata*\\n\\n📦 Raccolte: ${$json.collected || 0}\\n📤 Inviate a n8n: ${$json.sent || 0}\\n❌ Fallite: ${$json.failed || 0}\\n\\n⏰ ${$now.format('dd/MM/yyyy HH:mm')}\\n\\nContenuti in fase di generazione e approvazione...` }}",
         "otherOptions": {}
       },
-      "id": "b2000000-0000-0000-0000-000000000003",
+      "id": "9ac213bd-3740-4fd9-bfb8-c9347c36399e",
       "name": "ðŸ’¬ Slack - Raccolta Completata",
       "type": "n8n-nodes-base.slack",
       "typeVersion": 2.3,
-      "position": [620, 700]
+      "position": [
+        -3248,
+        1392
+      ],
+      "webhookId": "5c1e4276-75e0-4469-b669-0db74f2cb70b",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "QdO3z2Gt7JKdF405",
+          "name": "Slack account"
+        }
+      }
     },
     {
       "parameters": {
         "rule": {
-          "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }]
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
         }
       },
-      "id": "c3000000-0000-0000-0000-000000000001",
+      "id": "3b6050a0-9c68-4430-874d-e12fbc706e2a",
       "name": "â° Analytics - Ogni Giorno 8:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [100, 1000]
+      "position": [
+        -3696,
+        1936
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://news-to-social.vercel.app/api/analytics/dashboard",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "58ec50b3-a595-410c-b58f-d4215b1cb569",
+      "name": "ðŸ“Š Ottieni Analytics Dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -3472,
+        1936
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json.dashboard;\nconst s = d?.summary || {};\nreturn {\n  date: new Date().toLocaleDateString('it-IT', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),\n  totalViews: s.totalViews || 0,\n  totalEngagement: s.totalEngagement || 0,\n  avgEngagement: Number(s.averageEngagement || 0).toFixed(2),\n  topPlatform: s.topPlatform?.name || 'N/A',\n  recommendations: (s.trends?.improvementAreas || ['Aumenta la frequenza di pubblicazione', 'Prova nuovi formati di contenuto']).slice(0, 3)\n};"
+      },
+      "id": "6cda5a04-b735-4df9-9ef2-3a7b5990274b",
+      "name": "ðŸ“ˆ Formatta Report Analytics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3248,
+        1936
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0AR2U3NWDQ",
+          "mode": "list",
+          "cachedResultName": "social"
+        },
+        "text": "ðŸ“Š *Report Analytics Giornaliero*\n\nðŸ“… {{ $json.date }}\n\nðŸ“ˆ *Metriche:*\nâ€¢ ðŸ‘ï¸ Visualizzazioni: {{ $json.totalViews }}\nâ€¢ ðŸ’¬ Engagement totale: {{ $json.totalEngagement }}\nâ€¢ ðŸ“Š Engagement medio: {{ $json.avgEngagement }}%\nâ€¢ ðŸ† Top piattaforma: {{ $json.topPlatform }}\n\nðŸ’¡ *Raccomandazioni:*\n{{ $json.recommendations.map((r, i) => (i+1) + '. ' + r).join('\\n') }}",
+        "otherOptions": {}
+      },
+      "id": "eab15d0f-05cc-470b-a134-c4b9b5597534",
+      "name": "ðŸ’¬ Slack - Report Analytics",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        -3024,
+        1840
+      ],
+      "webhookId": "ba911a90-c1bf-443e-b08a-d16079cb4ee6",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "QdO3z2Gt7JKdF405",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "peewe75@gmail.com",
+        "toEmail": "peewe75@gmail.com",
+        "subject": "ðŸ“Š Report Analytics - {{ $json.date }}",
+        "options": {}
+      },
+      "id": "79c34eae-c512-4ccd-916a-c3ae874f322d",
+      "name": "ðŸ“§ Email - Report Analytics",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -3024,
+        2032
+      ],
+      "webhookId": "17786051-4cd2-456d-a272-825cb314eb6b",
+      "credentials": {
+        "smtp": {
+          "id": "2jJd8S1FCTcjeAZW",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "media",
+        "useBinaryData": true
+      },
+      "type": "@blotato/n8n-nodes-blotato.blotato",
+      "typeVersion": 2,
+      "position": [
+        -1792,
+        880
+      ],
+      "id": "2d254148-b152-463f-a4d1-508a00144787",
+      "name": "Upload media",
+      "alwaysOutputData": true,
+      "credentials": {
+        "blotatoApi": {
+          "id": "aBm3DGNgKsLB2tQI",
+          "name": "Blotato account"
+        }
+      },
+      "disabled": true,
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -272,135 +521,386 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-Webhook-Secret", "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA" }
+            {
+              "name": "X-Webhook-Secret",
+              "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA"
+            }
           ]
         },
         "options": {}
       },
-      "id": "c3000000-0000-0000-0000-000000000010",
-      "name": "ðŸ”„ Sincronizza Analytics",
+      "id": "37f2a91d-1fe3-46a4-9b3d-e5ea31e53c11",
+      "name": "🔄 Sincronizza Analytics",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [360, 920]
+      "position": [
+        -3696,
+        1616
+      ]
     },
     {
       "parameters": {
-        "url": "https://news-to-social.vercel.app/api/analytics/dashboard",
+        "modelId": {
+          "__rl": true,
+          "value": "gw",
+          "mode": "id"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Sei un Senior Social Media Strategist specializzato in news distribution e engagement optimization. Trasforma notizie in 4 post ad altissima conversione, ottimizzati per LinkedIn, Facebook, Instagram e TikTok. Tono: autorevole ma accessibile, sempre basato su fatti verificabili. Ogni post ha un hook studiato per fermare lo scrolling. Evita clichés AI come \"Nell'era digitale\" o \"Esploriamo insieme\". Usa linguaggio diretto e umano. Rispondi ESCLUSIVAMENTE con JSON valido (zero markdown, zero backtick, zero testo aggiuntivo)."
+            },
+            {
+              "content": "=Genera 4 post social ottimizzati per questa notizia:\n\nTITOLO: {{  $json.title }}\nSOMMARIO: {{  $json.summary }}\nFONTE: {{  $json.source }}\nLINK: {{  $json.link }}\n\nISTRUZIONI PER OGNI PIATTAFORMA:\n\nLINKEDIN (150-200 car): Thought Leadership. Hook: Data Hook o Impact Hook. Struttura: Hook → Contesto breve → 2-3 insight key → Domanda riflessiva. 4-5 hashtag rilevanti. Niente emoji eccessive. CTA: chiedi riflessione, non far leggere l'articolo.\n\nFACEBOOK (200-300 car): Conversazionale, storytelling, comunità. Hook: Question Hook o Breaking News. Struttura: Hook narrativo → Contesto empatico → Domanda finale per commenti. 3-4 emoji strategici. 3 hashtag. Chiedi opinione (\"Voi cosa ne pensate?\").\n\nINSTAGRAM (130-150 car): Visivo-first, trendy ma credibile. Hook: Curiosity Gap o Big Number. Inserisci keywords nel primo paragrafo (Instagram SEO). 6-10 hashtag mix (trending + vertical-specific). Max 3 emoji. Punchiness, breakpoints visivi.\n\nTIKTOK (Max 80 parole): Dinamico, Gen Z, NO boomer formality. Hook subito (2 sec): \"Aspetta che te lo spiego\", \"Questo è pazzo\", \"Non lo sapevi?\". Tono conversazionale, \"parlato\". 3-5 hashtag mix news + trending. CTA social (\"Seguici\", \"Condividi se d'accordo\").\n\nVINCOLI: Zero clichés AI (\"Nell'era digitale\", \"Esploriamo insieme\"). Linguaggio diretto, umano. Numeri/cifre quando presenti = credibilità. Spaciatura generosa (mobile-first). Sempre coerente con LINK e SOURCE.\n\nIMAGEPROMPPT (inglese per DALL-E): Crea un prompt fotografico che rappresenta visivamente la notizia, cinematic photorealism o minimalist style, stile professionale/moderno, ZERO testo nell'immagine.\n\nRispondi ESCLUSIVAMENTE con questo JSON (zero markdown, zero backtick):\n\n{\n  \"linkedin\": {\n    \"content\": \"...\",\n    \"hashtags\": [\"#tag1\", \"#tag2\", \"#tag3\", \"#tag4\"]\n  },\n  \"facebook\": {\n    \"content\": \"...\",\n    \"hashtags\": [\"#tag1\", \"#tag2\", \"#tag3\"]\n  },\n  \"instagram\": {\n    \"content\": \"...\",\n    \"hashtags\": [\"#tag1\", \"#tag2\", \"#tag3\", \"#tag4\", \"#tag5\", \"#tag6\", \"#tag7\", \"#tag8\"]\n  },\n  \"tiktok\": {\n    \"content\": \"...\",\n    \"hashtags\": [\"#tag1\", \"#tag2\", \"#tag3\", \"#tag4\"]\n  },\n  \"imagePrompt\": \"...\"\n}\n  }\n  }\n  }\n  }\n}}}}}}}}}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -3024,
+        1072
+      ],
+      "id": "a491ad83-0e30-4dc8-9b94-d7f46d7ec62e",
+      "name": "Genera Contenuti (OpenAI)",
+      "credentials": {
+        "openAiApi": {
+          "id": "EjjiIRN8Hv6OUIAI",
+          "name": "OpenRouter"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://news-to-social.vercel.app/api/approval/submit",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-Webhook-Secret", "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Secret",
+              "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "={{ JSON.stringify({\n  newsId: $json.newsId,\n  title: $json.title,\n  summary: $json.summary,\n  source: $json.source,\n  link: $json.link,\n  generatedPosts: $json.generatedPosts,\n  imageUrl: $json.imageUrl || '',\n  resumeUrl: $execution.resumeUrl,\n  platforms: $json.platforms\n}) }}",
+        "bodyParameters": {
+          "parameters": [
+            {}
           ]
         },
         "options": {}
       },
-      "id": "c3000000-0000-0000-0000-000000000002",
-      "name": "ðŸ“Š Ottieni Analytics Dashboard",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
-      "position": [360, 1000]
+      "position": [
+        -2464,
+        976
+      ],
+      "id": "0b2c5298-b2b2-45d3-81dc-bd3700ffac18",
+      "name": "📱 Salva in Dashboard"
     },
     {
       "parameters": {
-        "jsCode": "const d = $input.first().json.dashboard;\nconst s = d?.summary || {};\nreturn {\n  date: new Date().toLocaleDateString('it-IT', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),\n  totalViews: s.totalViews || 0,\n  totalEngagement: s.totalEngagement || 0,\n  avgEngagement: Number(s.averageEngagement || 0).toFixed(2),\n  topPlatform: s.topPlatform?.name || 'N/A',\n  recommendations: (s.trends?.improvementAreas || ['Aumenta la frequenza di pubblicazione', 'Prova nuovi formati di contenuto']).slice(0, 3)\n};"
-      },
-      "id": "c3000000-0000-0000-0000-000000000003",
-      "name": "ðŸ“ˆ Formatta Report Analytics",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [620, 1000]
-    },
-    {
-      "parameters": {
-        "text": "ðŸ“Š *Report Analytics Giornaliero*\n\nðŸ“… {{ $json.date }}\n\nðŸ“ˆ *Metriche:*\nâ€¢ ðŸ‘ï¸ Visualizzazioni: {{ $json.totalViews }}\nâ€¢ ðŸ’¬ Engagement totale: {{ $json.totalEngagement }}\nâ€¢ ðŸ“Š Engagement medio: {{ $json.avgEngagement }}%\nâ€¢ ðŸ† Top piattaforma: {{ $json.topPlatform }}\n\nðŸ’¡ *Raccomandazioni:*\n{{ $json.recommendations.map((r, i) => (i+1) + '. ' + r).join('\\n') }}",
-        "channel": "#analytics",
-        "otherOptions": {}
-      },
-      "id": "c3000000-0000-0000-0000-000000000004",
-      "name": "ðŸ’¬ Slack - Report Analytics",
-      "type": "n8n-nodes-base.slack",
-      "typeVersion": 2.3,
-      "position": [880, 920]
-    },
-    {
-      "parameters": {
-        "fromEmail": "noreply@news-to-social.com",
-        "toEmail": "peewe75@gmail.com",
-        "subject": "ðŸ“Š Report Analytics - {{ $json.date }}",
-        "emailType": "text",
-        "message": "Report Analytics del {{ $json.date }}\n\nVISUALIZZAZIONI TOTALI: {{ $json.totalViews }}\nENGAGEMENT TOTALE: {{ $json.totalEngagement }}\nENGAGEMENT MEDIO: {{ $json.avgEngagement }}%\nTOP PIATTAFORMA: {{ $json.topPlatform }}\n\nRACCOMANDAZIONI:\n{{ $json.recommendations.map((r, i) => (i+1) + '. ' + r).join('\\n') }}",
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/images/generations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://news-to-social.vercel.app"
+            },
+            {
+              "name": "X-Title",
+              "value": "News to Social"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model: 'bytedance-seed/seedream-4.5', prompt: $json.imagePrompt, n: 1, size: '1024x1024'}) }}",
         "options": {}
       },
-      "id": "c3000000-0000-0000-0000-000000000005",
-      "name": "ðŸ“§ Email - Report Analytics",
-      "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2.1,
-      "position": [880, 1080]
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -2672,
+        1168
+      ],
+      "id": "cc64a05f-137d-4af1-ac86-ea8ef5aae500",
+      "name": "🎨 Genera Immagine (Seedream)"
     }
   ],
-
+  "pinData": {
+    "ðŸ“¨ Webhook - Ricevi News": [
+      {
+        "json": {
+          "headers": {
+            "host": "sbmbcs.app.n8n.cloud",
+            "user-agent": "axios/1.14.0",
+            "content-length": "446",
+            "accept": "application/json, text/plain, */*",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "13.221.59.51",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "US",
+            "cf-ray": "9e9436f1abd00956-EWR",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "x-forwarded-for": "13.221.59.51, 172.70.111.154",
+            "x-forwarded-host": "sbmbcs.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-99-5bfbd7bc54-s6mdx",
+            "x-invocation-id": "fra1::hhxdh-1775682158136-13e85bbf1be1",
+            "x-is-trusted": "yes",
+            "x-real-ip": "13.221.59.51",
+            "x-vercel-id": "fra1::hhxdh-1775682158136-13e85bbf1be1",
+            "x-webhook-secret": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "title": "Istanza socio per debiti personali e societari in sovraindebitamento",
+            "content": "Il Tribunale di Mantova, con decisione del 19 febbraio 2026, valuta l'istanza di un socio per definire debiti personali e della società tramite procedura di sovraindebitamento. Chiarimenti su distinzione tra debiti propri e societari. Utile per ex soci.",
+            "url": "https://www.ilcaso.it/riviste/Sovraindebitamento",
+            "source": "IL CASO.it",
+            "date": "2026-02-19"
+          },
+          "webhookUrl": "https://sbmbcs.app.n8n.cloud/webhook/b049384f-16fc-4d77-a883-364e66280ec1",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
   "connections": {
     "ðŸ“¨ Webhook - Ricevi News": {
-      "main": [[{ "node": "ðŸ—‚ï¸ Estrai e Valida Dati", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "ðŸ—‚ï¸ Estrai e Valida Dati",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "ðŸ—‚ï¸ Estrai e Valida Dati": {
-      "main": [[{ "node": "ðŸ“ Genera Contenuti (AI)", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "ðŸ“ Genera Contenuti (AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "ðŸ“ Genera Contenuti (AI)": {
-      "main": [[{ "node": "ðŸ“‹ Formatta per Review", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Genera Contenuti (OpenAI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "ðŸ“‹ Formatta per Review": {
-      "main": [[
-        { "node": "ðŸ’¬ Slack - Pending Approval", "type": "main", "index": 0 },
-        { "node": "ðŸ“§ Email - Richiesta Approvazione", "type": "main", "index": 0 },
-        { "node": "â³ Attendi Approvazione (HITL)", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "ðŸ’¬ Slack - Pending Approval",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "ðŸ“§ Email - Richiesta Approvazione",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🎨 Genera Immagine (Seedream)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "â³ Attendi Approvazione (HITL)": {
-      "main": [[{ "node": "âœ… Approvato?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "âœ… Approvato?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "âœ… Approvato?": {
       "main": [
-        [{ "node": "ðŸš€ Pubblica su Blotato", "type": "main", "index": 0 }],
-        [{ "node": "ðŸ’¬ Slack - Rifiutato âŒ", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Upload media",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ðŸ’¬ Slack - Rifiutato âŒ",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "ðŸš€ Pubblica su Blotato": {
-      "main": [[
-        { "node": "ðŸ’¬ Slack - Pubblicato âœ…", "type": "main", "index": 0 },
-        { "node": "ðŸ“§ Email - Pubblicato âœ…", "type": "main", "index": 0 },
-        { "node": "ðŸ“¡ Callback Backend - Pubblicato", "type": "main", "index": 0 }
-      ]]
-    },
     "â° Schedule - Ogni 6 Ore": {
-      "main": [[{ "node": "ðŸ“° Raccogli News e Avvia Pipeline", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "ðŸ“° Raccogli News e Avvia Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "ðŸ“° Raccogli News e Avvia Pipeline": {
-      "main": [[{ "node": "ðŸ’¬ Slack - Raccolta Completata", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "ðŸ’¬ Slack - Raccolta Completata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "â° Analytics - Ogni Giorno 8:00": {
-      "main": [[{ "node": "ðŸ”„ Sincronizza Analytics", "type": "main", "index": 0 }]]
-    },
-    "ðŸ”„ Sincronizza Analytics": {
-      "main": [[{ "node": "ðŸ“Š Ottieni Analytics Dashboard", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "ðŸ“Š Ottieni Analytics Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "ðŸ“Š Ottieni Analytics Dashboard": {
-      "main": [[{ "node": "ðŸ“ˆ Formatta Report Analytics", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "ðŸ“ˆ Formatta Report Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "ðŸ“ˆ Formatta Report Analytics": {
-      "main": [[
-        { "node": "ðŸ’¬ Slack - Report Analytics", "type": "main", "index": 0 },
-        { "node": "ðŸ“§ Email - Report Analytics", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "ðŸ’¬ Slack - Report Analytics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "ðŸ“§ Email - Report Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload media": {
+      "main": [
+        [
+          {
+            "node": "ðŸ’¬ Slack - Pubblicato âœ…",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "ðŸ“§ Email - Pubblicato âœ…",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "ðŸ“¡ Callback Backend - Pubblicato",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Genera Contenuti (OpenAI)": {
+      "main": [
+        [
+          {
+            "node": "ðŸ“‹ Formatta per Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📱 Salva in Dashboard": {
+      "main": [
+        [
+          {
+            "node": "â³ Attendi Approvazione (HITL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎨 Genera Immagine (Seedream)": {
+      "main": [
+        [
+          {
+            "node": "📱 Salva in Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-
   "active": true,
   "settings": {
-    "executionOrder": "v1",
-    "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner"
+    "executionOrder": "v1"
   },
+  "versionId": "3873599b-7047-43d2-a8cf-4648c5317519",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c472d3ad29fd0ea8b0be296524a0aebbc10e6bb8e7ee9ee508d524d2809636ff"
+  },
+  "id": "DEPkXOOGUb0qfLDK",
   "tags": []
 }
-
