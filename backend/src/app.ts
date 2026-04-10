@@ -86,7 +86,7 @@ if (process.env.CLERK_SECRET_KEY) {
 // Routes
 app.use('/api/news', newsRoutes);
 app.use('/api/publish', publishRoutes);
-app.use('/api/approval', approvalRoutes);
+app.use('/api/approvals', approvalRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/avatar', avatarRoutes);
 app.use('/api/analytics', analyticsRoutes);
