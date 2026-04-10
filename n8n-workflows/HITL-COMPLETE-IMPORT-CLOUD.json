@@ -267,6 +267,24 @@
     },
     {
       "parameters": {
+        "method": "POST",
+        "url": "https://news-to-social.vercel.app/api/analytics/sync",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Webhook-Secret", "value": "wPbwLJxUvY9W8XnkDPTJPGk8oEarwExA" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c3000000-0000-0000-0000-000000000010",
+      "name": "ðŸ”„ Sincronizza Analytics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [360, 920]
+    },
+    {
+      "parameters": {
         "url": "https://news-to-social.vercel.app/api/analytics/dashboard",
         "sendHeaders": true,
         "headerParameters": {
@@ -361,6 +379,9 @@
       "main": [[{ "node": "ðŸ’¬ Slack - Raccolta Completata", "type": "main", "index": 0 }]]
     },
     "â° Analytics - Ogni Giorno 8:00": {
+      "main": [[{ "node": "ðŸ”„ Sincronizza Analytics", "type": "main", "index": 0 }]]
+    },
+    "ðŸ”„ Sincronizza Analytics": {
       "main": [[{ "node": "ðŸ“Š Ottieni Analytics Dashboard", "type": "main", "index": 0 }]]
     },
     "ðŸ“Š Ottieni Analytics Dashboard": {
