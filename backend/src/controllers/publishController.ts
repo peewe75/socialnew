@@ -84,7 +84,7 @@ export const approveAndPublish = async (req: Request, res: Response) => {
       .map((p: any) => ({ platform: p.platform, reason: 'not_connected' }));
 
     if (postsToPublish.length === 0) {
-      console.log(`⚠️  No connected platforms to publish to. Skipped: ${skippedPosts.map(s => s.platform).join(', ')}`);
+      console.log(`⚠️  No connected platforms to publish to. Skipped: ${skippedPosts.map((s: any) => s.platform).join(', ')}`);
       return res.json({
         success: true,
         message: 'No connected platforms to publish to',
